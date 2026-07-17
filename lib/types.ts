@@ -5,6 +5,7 @@ export type Repository = { id: string; slug: string; installationId?: number; de
 export type Developer = { id: string; githubLogin: string; email?: string; tokenHash: string };
 export type ModelRate = { model: string; effectiveFrom: string; inputPerMTok: number; outputPerMTok: number; cachedInputPerMTok: number };
 export type SessionContext = { sessionId: string; repositorySlug: string; branch: string; headSha: string; developerId: string; observedAt: string };
+export type VerificationSession = { sessionId: string; repositorySlug: string; branch: string; headSha: string; observedAt: string; eventCount: number };
 export type UsageEvent = {
   id: string; eventKey: string; source: UsageSource; sessionId?: string; repositoryId?: string; developerId?: string;
   branch?: string; headSha?: string; model: string; inputTokens: number; outputTokens: number; cachedInputTokens: number;

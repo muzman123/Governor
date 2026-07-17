@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { Pool } from "pg";
-import type { Dashboard, Developer, ModelRate, PullRequest, Receipt, Repository, SessionContext, UsageEvent } from "./types";
+import type { Dashboard, Developer, ModelRate, PullRequest, Receipt, Repository, SessionContext, UsageEvent, VerificationSession } from "./types";
 import { DEFAULT_MODEL_RATES } from "./pricing";
 
 export interface GovernorStore {
@@ -10,6 +10,7 @@ export interface GovernorStore {
   createDeveloper(input: Omit<Developer, "id" | "tokenHash"> & { token: string }): Promise<Developer>;
   saveContext(context: SessionContext): Promise<void>;
   getContext(sessionId: string): Promise<SessionContext | undefined>;
+  getVerificationSessions(developerId: string, after: string): Promise<VerificationSession[]>;
   getRates(): Promise<ModelRate[]>;
   ingestEvent(event: UsageEvent): Promise<{ inserted: boolean }>;
   getEvents(repositoryId: string, options?: { branch?: string; from?: string; to?: string }): Promise<UsageEvent[]>;
@@ -50,6 +51,12 @@ export class MemoryGovernorStore implements GovernorStore {
   async createDeveloper(input: Omit<Developer, "id" | "tokenHash"> & { token: string }) { const developer={id:crypto.randomUUID(),githubLogin:input.githubLogin,email:input.email,tokenHash:hash(input.token)}; this.developers.set(developer.id,developer); return developer; }
   async saveContext(context: SessionContext) { this.contexts.set(context.sessionId, context); }
   async getContext(sessionId: string) { return this.contexts.get(sessionId); }
+  async getVerificationSessions(developerId: string, after: string) {
+    return [...this.contexts.values()]
+      .filter((context) => context.developerId === developerId && context.observedAt >= after)
+      .map((context) => ({ ...context, eventCount:[...this.events.values()].filter((event) => event.developerId === developerId && event.sessionId === context.sessionId).length }))
+      .sort((a,b) => b.observedAt.localeCompare(a.observedAt));
+  }
   async getRates() { return this.rates; }
   async ingestEvent(event: UsageEvent) { if (this.events.has(event.eventKey)) return { inserted:false }; this.events.set(event.eventKey,event); return { inserted:true }; }
   async getEvents(repositoryId: string, options: { branch?: string; from?: string; to?: string } = {}) { return [...this.events.values()].filter((event) => event.repositoryId===repositoryId && (!options.branch || event.branch===options.branch) && (!options.from || event.occurredAt>=options.from) && (!options.to || event.occurredAt<=options.to)); }
@@ -70,6 +77,10 @@ export class PostgresGovernorStore implements GovernorStore {
   async createDeveloper(input: Omit<Developer,"id"|"tokenHash"> & {token:string}) { const developer={id:crypto.randomUUID(),githubLogin:input.githubLogin,email:input.email,tokenHash:hash(input.token)}; const r=await this.pool.query("INSERT INTO developers(id,github_login,email,token_hash) VALUES($1,$2,$3,$4) RETURNING id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\"",[developer.id,developer.githubLogin,developer.email ?? null,developer.tokenHash]); return r.rows[0] as Developer; }
   async saveContext(context: SessionContext) { await this.pool.query("INSERT INTO session_contexts(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id,observed_at=EXCLUDED.observed_at",[context.sessionId,context.repositorySlug,context.branch,context.headSha,context.developerId,context.observedAt]); }
   async getContext(sessionId: string) { const r=await this.pool.query("SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at AS \"observedAt\" FROM session_contexts WHERE session_id=$1",[sessionId]); return r.rows[0] as SessionContext | undefined; }
+  async getVerificationSessions(developerId: string, after: string) {
+    const r=await this.pool.query("SELECT sc.session_id AS \"sessionId\",sc.repository_slug AS \"repositorySlug\",sc.branch,sc.head_sha AS \"headSha\",sc.observed_at AS \"observedAt\",COUNT(ue.id)::int AS \"eventCount\" FROM session_contexts sc LEFT JOIN usage_events ue ON ue.session_id=sc.session_id AND ue.developer_id=$1 WHERE sc.developer_id=$1 AND sc.observed_at >= $2 GROUP BY sc.session_id,sc.repository_slug,sc.branch,sc.head_sha,sc.observed_at ORDER BY sc.observed_at DESC",[developerId,after]);
+    return r.rows as VerificationSession[];
+  }
   async getRates() { const r=await this.pool.query("SELECT model,effective_from::text AS \"effectiveFrom\",input_per_mtok::float AS \"inputPerMTok\",output_per_mtok::float AS \"outputPerMTok\",cached_input_per_mtok::float AS \"cachedInputPerMTok\" FROM model_rates"); return r.rows as ModelRate[]; }
   async ingestEvent(event: UsageEvent) { const r=await this.pool.query("INSERT INTO usage_events(id,event_key,source,session_id,repository_id,developer_id,branch,head_sha,model,input_tokens,output_tokens,cached_input_tokens,occurred_at,cost_usd,rate_effective_from,attribution_method,attribution_confidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT(event_key) DO NOTHING",[event.id,event.eventKey,event.source,event.sessionId ?? null,event.repositoryId ?? null,event.developerId ?? null,event.branch ?? null,event.headSha ?? null,event.model,event.inputTokens,event.outputTokens,event.cachedInputTokens,event.occurredAt,event.costUsd,event.rateEffectiveFrom,event.attributionMethod,event.attributionConfidence]); return {inserted:r.rowCount===1}; }
   async getEvents(repositoryId: string, options: {branch?:string;from?:string;to?:string} = {}) { const clauses=["repository_id=$1"]; const values:unknown[]=[repositoryId]; if(options.branch){ values.push(options.branch);clauses.push(`branch=$${values.length}`); } if(options.from){values.push(options.from);clauses.push(`occurred_at >= $${values.length}`);}if(options.to){values.push(options.to);clauses.push(`occurred_at <= $${values.length}`);} const r=await this.pool.query(`SELECT id,event_key AS "eventKey",source,session_id AS "sessionId",repository_id AS "repositoryId",developer_id AS "developerId",branch,head_sha AS "headSha",model,input_tokens::int AS "inputTokens",output_tokens::int AS "outputTokens",cached_input_tokens::int AS "cachedInputTokens",occurred_at AS "occurredAt",cost_usd::float AS "costUsd",rate_effective_from::text AS "rateEffectiveFrom",attribution_method AS "attributionMethod",attribution_confidence AS "attributionConfidence" FROM usage_events WHERE ${clauses.join(" AND ")} ORDER BY occurred_at`,values); return r.rows as UsageEvent[]; }
