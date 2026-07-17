@@ -58,8 +58,10 @@ async function verify() {
 
 async function hook() {
   const raw=args[0] ?? await readStdin(); let payload={}; try { payload=JSON.parse(raw || "{}"); } catch { throw new Error("Governor hook expected JSON from Codex notify."); }
-  const sessionId=payload.session_id ?? payload.sessionId ?? payload.conversation_id ?? payload.conversationId ?? payload.id; if(!sessionId) throw new Error("Notify payload has no session/conversation identifier; use governor capture as the fallback source.");
-  const cwd=payload.cwd ?? payload.working_directory ?? process.cwd(); const git=(arg)=>spawnSync("git",arg,{cwd,encoding:"utf8"}); const remote=git(["remote","get-url","origin"]); const branch=git(["branch","--show-current"]); const head=git(["rev-parse","HEAD"]);
+  // Codex notify uses documented hyphenated fields (`thread-id`, `turn-id`, `cwd`).
+  // Keep older spellings for compatibility with earlier Codex builds and wrappers.
+  const sessionId=payload["thread-id"] ?? payload.thread_id ?? payload.session_id ?? payload.sessionId ?? payload.conversation_id ?? payload.conversationId ?? payload.id; if(!sessionId) throw new Error("Notify payload has no thread/session identifier; use governor capture as the fallback source.");
+  const cwd=payload.cwd ?? payload["working-directory"] ?? payload.working_directory ?? process.cwd(); const git=(arg)=>spawnSync("git",arg,{cwd,encoding:"utf8"}); const remote=git(["remote","get-url","origin"]); const branch=git(["branch","--show-current"]); const head=git(["rev-parse","HEAD"]);
   if(remote.status!==0 || branch.status!==0 || head.status!==0) return console.error("Governor hook skipped: current directory is not a git repository with origin.");
   const repositorySlug=toSlug(remote.stdout.trim()); if(!repositorySlug) return console.error("Governor hook skipped: origin is not a GitHub repository.");
   const settings=await readSettings(); const result=await timedFetch(`${settings.url}/api/sessions/context`,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${settings.token}`},body:JSON.stringify({sessionId,repositorySlug,branch:branch.stdout.trim(),headSha:head.stdout.trim(),observedAt:new Date().toISOString()})}); if(!result.ok) throw new Error(`Governor context upload failed (${result.status}): ${await result.text()}`); console.log("Governor context recorded");
