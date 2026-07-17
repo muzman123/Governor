@@ -4,7 +4,13 @@ export const DEFAULT_MODEL_RATES: ModelRate[] = [
   // Published API token rates are used as transparent estimates for Codex usage,
   // never represented as a user's ChatGPT or Codex invoice total.
   { model: "gpt-5.4-mini", effectiveFrom: "2026-03-17", inputPerMTok: 0.75, outputPerMTok: 4.5, cachedInputPerMTok: 0.075 },
+  // Keep the pre-GPT-5.6 rates for historical events, then use the current
+  // model IDs and prices from 2026-07-17 onward.
   { model: "gpt-5.6", effectiveFrom: "2026-01-01", inputPerMTok: 2.5, outputPerMTok: 15, cachedInputPerMTok: 0.25 },
+  { model: "gpt-5.6", effectiveFrom: "2026-07-17", inputPerMTok: 5, outputPerMTok: 30, cachedInputPerMTok: 0.5 },
+  { model: "gpt-5.6-terra", effectiveFrom: "2026-07-17", inputPerMTok: 2.5, outputPerMTok: 15, cachedInputPerMTok: 0.25 },
+  { model: "gpt-5.6-luna", effectiveFrom: "2026-07-17", inputPerMTok: 1, outputPerMTok: 6, cachedInputPerMTok: 0.1 },
+  { model: "gpt-5.5", effectiveFrom: "2026-04-23", inputPerMTok: 5, outputPerMTok: 30, cachedInputPerMTok: 0.5 },
   { model: "gpt-5.6-mini", effectiveFrom: "2026-01-01", inputPerMTok: 0.4, outputPerMTok: 2, cachedInputPerMTok: 0.04 },
   { model: "gpt-5.2-codex", effectiveFrom: "2026-01-01", inputPerMTok: 2.5, outputPerMTok: 15, cachedInputPerMTok: 0.25 }
 ];

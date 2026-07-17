@@ -21,3 +21,14 @@ test("includes the current Codex fallback model at its published token rates",()
   const rate=resolveRate("gpt-5.4-mini","2026-07-17T00:00:00.000Z",DEFAULT_MODEL_RATES);
   assert.deepEqual(rate,{model:"gpt-5.4-mini",effectiveFrom:"2026-03-17",inputPerMTok:.75,outputPerMTok:4.5,cachedInputPerMTok:.075});
 });
+
+test("recognizes the current Codex picker model IDs",()=>{
+  assert.equal(resolveRate("gpt-5.6-terra","2026-07-17T00:00:00.000Z",DEFAULT_MODEL_RATES).outputPerMTok,15);
+  assert.equal(resolveRate("gpt-5.6-luna","2026-07-17T00:00:00.000Z",DEFAULT_MODEL_RATES).outputPerMTok,6);
+  assert.equal(resolveRate("gpt-5.5","2026-07-17T00:00:00.000Z",DEFAULT_MODEL_RATES).outputPerMTok,30);
+});
+
+test("uses the documented Sol pricing for the gpt-5.6 alias after the current rate takes effect",()=>{
+  const rate=resolveRate("gpt-5.6","2026-07-17T00:00:00.000Z",DEFAULT_MODEL_RATES);
+  assert.deepEqual(rate,{model:"gpt-5.6",effectiveFrom:"2026-07-17",inputPerMTok:5,outputPerMTok:30,cachedInputPerMTok:.5});
+});
