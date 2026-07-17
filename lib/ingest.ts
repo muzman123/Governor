@@ -26,24 +26,31 @@ export async function ingestUsage(store: GovernorStore, developerId: string, inp
   return { ...(await store.ingestEvent(event)), event };
 }
 
-type OtelValue = { stringValue?: string; intValue?: string | number; doubleValue?: number; boolValue?: boolean };
+type OtelValue = { stringValue?: string; intValue?: string | number; doubleValue?: number; boolValue?: boolean; kvlistValue?: { values?: Array<{ key: string; value?: OtelValue }> } };
 type OtelAttribute = { key: string; value?: OtelValue };
 const value = (attribute?: OtelAttribute) => { const v=attribute?.value; return v?.stringValue ?? v?.intValue ?? v?.doubleValue ?? v?.boolValue; };
 const numberAttr = (attrs: OtelAttribute[], keys: string[]) => { for (const key of keys) { const result=value(attrs.find((attr)=>attr.key===key)); if(result !== undefined && Number.isFinite(Number(result))) return Number(result); } return 0; };
 const stringAttr = (attrs: OtelAttribute[], keys: string[]) => { for (const key of keys) { const result=value(attrs.find((attr)=>attr.key===key)); if(typeof result === "string" && result) return result; } return undefined; };
+const bodyObject = (body: OtelValue | undefined): Record<string, unknown> => {
+  if (typeof body?.stringValue === "string") {
+    try { const parsed=JSON.parse(body.stringValue); return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}; } catch { return {}; }
+  }
+  return Object.fromEntries((body?.kvlistValue?.values ?? []).map((entry)=>[entry.key, value({key:entry.key,value:entry.value})]));
+};
 
 /** Normalizes OTLP/HTTP JSON logs. Unknown events are ignored rather than guessed. */
 export function normalizeOtlpLogs(payload: unknown): UsageInput[] {
-  const root = payload as { resourceLogs?: Array<{ scopeLogs?: Array<{ logRecords?: Array<{ timeUnixNano?: string; attributes?: OtelAttribute[]; traceId?: string; body?: { stringValue?: string } }> }> }> };
-  const records = root.resourceLogs?.flatMap((resource)=>resource.scopeLogs?.flatMap((scope)=>scope.logRecords ?? []) ?? []) ?? [];
-  return records.flatMap((record) => {
-    const attrs=record.attributes ?? []; let body: Record<string, unknown>={}; try { body=record.body?.stringValue ? JSON.parse(record.body.stringValue) : {}; } catch { /* body remains intentionally unused */ }
-    const inputTokens=numberAttr(attrs,["input_tokens","gen_ai.usage.input_tokens","response.input_tokens"]) || Number(body.input_tokens ?? 0);
-    const outputTokens=numberAttr(attrs,["output_tokens","gen_ai.usage.output_tokens","response.output_tokens"]) || Number(body.output_tokens ?? 0);
-    const cachedInputTokens=numberAttr(attrs,["cached_input_tokens","gen_ai.usage.cached_input_tokens","response.cached_input_tokens"]) || Number(body.cached_input_tokens ?? 0);
+  const root = payload as { resourceLogs?: Array<{ resource?: { attributes?: OtelAttribute[] }; scopeLogs?: Array<{ logRecords?: Array<{ timeUnixNano?: string; attributes?: OtelAttribute[]; traceId?: string; body?: OtelValue }> }> }> };
+  const records = root.resourceLogs?.flatMap((resource)=>resource.scopeLogs?.flatMap((scope)=>(scope.logRecords ?? []).map((record)=>({resource,record}))) ?? []) ?? [];
+  return records.flatMap(({resource,record}) => {
+    const attrs=[...(resource.resource?.attributes ?? []),...(record.attributes ?? [])]; const body=bodyObject(record.body);
+    // Codex's current OTLP log events use *_token_count and conversation.id.
+    const inputTokens=numberAttr(attrs,["input_token_count","input_tokens","gen_ai.usage.input_tokens","response.input_tokens"]) || Number(body.input_token_count ?? body.input_tokens ?? 0);
+    const outputTokens=numberAttr(attrs,["output_token_count","output_tokens","gen_ai.usage.output_tokens","response.output_tokens"]) || Number(body.output_token_count ?? body.output_tokens ?? 0);
+    const cachedInputTokens=numberAttr(attrs,["cached_token_count","cached_input_tokens","gen_ai.usage.cached_input_tokens","response.cached_input_tokens"]) || Number(body.cached_token_count ?? body.cached_input_tokens ?? 0);
     const model=stringAttr(attrs,["model","gen_ai.request.model","response.model"]) ?? (typeof body.model === "string" ? body.model : undefined);
     if (!model || (!inputTokens && !outputTokens)) return [];
     const nanos=record.timeUnixNano ? Number(record.timeUnixNano) : Date.now();
-    return [{ source:"otel", sessionId:stringAttr(attrs,["conversation_id","session_id","codex.conversation_id"]) ?? record.traceId, model, inputTokens, outputTokens, cachedInputTokens, occurredAt:new Date(nanos / 1_000_000).toISOString() } satisfies UsageInput];
+    return [{ source:"otel", sessionId:stringAttr(attrs,["conversation.id","conversation_id","session_id","codex.conversation_id"]) ?? record.traceId, model, inputTokens, outputTokens, cachedInputTokens, occurredAt:new Date(nanos / 1_000_000).toISOString() } satisfies UsageInput];
   });
 }
