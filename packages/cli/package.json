@@ -1,0 +1,7 @@
+{
+  "name": "governor",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "governor": "./bin/governor.mjs" },
+  "files": ["bin"]
+}
