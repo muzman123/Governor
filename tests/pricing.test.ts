@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { estimateCost, resolveRate } from "../lib/pricing";
+import { DEFAULT_MODEL_RATES, estimateCost, resolveRate } from "../lib/pricing";
 
 const rates=[
   {model:"gpt-5.6",effectiveFrom:"2026-01-01",inputPerMTok:2,outputPerMTok:10,cachedInputPerMTok:.2},
@@ -15,4 +15,9 @@ test("pricing selects the most recent effective rate and prices cache separately
 
 test("pricing rejects a model without an explicit rate",()=>{
   assert.throws(()=>resolveRate("unknown","2026-07-16T00:00:00.000Z",rates),/No effective Governor rate/);
+});
+
+test("includes the current Codex fallback model at its published token rates",()=>{
+  const rate=resolveRate("gpt-5.4-mini","2026-07-17T00:00:00.000Z",DEFAULT_MODEL_RATES);
+  assert.deepEqual(rate,{model:"gpt-5.4-mini",effectiveFrom:"2026-03-17",inputPerMTok:.75,outputPerMTok:4.5,cachedInputPerMTok:.075});
 });

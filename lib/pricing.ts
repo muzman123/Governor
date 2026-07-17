@@ -1,6 +1,9 @@
 import type { ModelRate, UsageEvent } from "./types";
 
 export const DEFAULT_MODEL_RATES: ModelRate[] = [
+  // Published API token rates are used as transparent estimates for Codex usage,
+  // never represented as a user's ChatGPT or Codex invoice total.
+  { model: "gpt-5.4-mini", effectiveFrom: "2026-03-17", inputPerMTok: 0.75, outputPerMTok: 4.5, cachedInputPerMTok: 0.075 },
   { model: "gpt-5.6", effectiveFrom: "2026-01-01", inputPerMTok: 2.5, outputPerMTok: 15, cachedInputPerMTok: 0.25 },
   { model: "gpt-5.6-mini", effectiveFrom: "2026-01-01", inputPerMTok: 0.4, outputPerMTok: 2, cachedInputPerMTok: 0.04 },
   { model: "gpt-5.2-codex", effectiveFrom: "2026-01-01", inputPerMTok: 2.5, outputPerMTok: 15, cachedInputPerMTok: 0.25 }
