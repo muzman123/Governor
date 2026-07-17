@@ -32,7 +32,7 @@ Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET
 
 ```bash
 npm run governor -- join --url https://YOUR_HOST --token YOUR_TELEMETRY_TOKEN
-npm run governor -- verify
+npm run governor -- verify 120
 ```
 
 `join` creates a timestamped backup before changing `~/.codex/config.toml`, keeps `log_user_prompt = false`, and wraps an existing `notify` command so both it and Governor receive Codex completion payloads. It never changes an existing `[otel]` configuration. `verify` waits for one real Codex turn and reports whether Governor saw both signed git context and its matching usage event. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
