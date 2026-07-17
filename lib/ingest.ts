@@ -8,22 +8,22 @@ export const ContextSchema = z.object({ sessionId:z.string().min(1), repositoryS
 export const UsageSchema = z.object({ eventKey:z.string().min(1).optional(), source:z.enum(["otel","session_file","manual"]).default("manual"), sessionId:z.string().min(1).optional(), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/).optional(), branch:z.string().optional(), headSha:z.string().optional(), model:z.string().min(1), inputTokens:z.coerce.number().int().nonnegative(), outputTokens:z.coerce.number().int().nonnegative(), cachedInputTokens:z.coerce.number().int().nonnegative().default(0), occurredAt:z.string().datetime().optional() });
 export type UsageInput = z.infer<typeof UsageSchema>;
 
-export async function ingestUsage(store: GovernorStore, developerId: string, input: UsageInput): Promise<{ inserted: boolean; event?: UsageEvent }> {
+export async function ingestUsage(store: GovernorStore, developerId: string, input: UsageInput): Promise<{ inserted: boolean; event?: UsageEvent; pending?: boolean }> {
   const occurredAt = input.occurredAt ?? new Date().toISOString();
   const context = input.sessionId ? await store.getContext(input.sessionId) : undefined;
   const repositorySlug = context?.repositorySlug ?? input.repositorySlug;
-  if (!repositorySlug) throw new Error("Usage event needs a session context or repositorySlug");
-  const repository = await store.getRepositoryBySlug(repositorySlug);
-  if (!repository) throw new Error(`Governor is not installed for repository ${repositorySlug}`);
+  const repository = repositorySlug ? await store.getRepositoryBySlug(repositorySlug) : undefined;
+  if (repositorySlug && !repository) throw new Error(`Governor is not installed for repository ${repositorySlug}`);
+  if (!repository && !input.sessionId) throw new Error("Usage event needs a session context or repositorySlug");
   const rate = resolveRate(input.model, occurredAt, await store.getRates());
   const exact = Boolean(context && context.developerId === developerId);
   const event: UsageEvent = {
     id: crypto.randomUUID(), eventKey: input.eventKey ?? crypto.createHash("sha256").update(JSON.stringify([input.sessionId,input.model,input.inputTokens,input.outputTokens,input.cachedInputTokens,occurredAt])).digest("hex"), source: input.source as UsageSource,
-    sessionId: input.sessionId, repositoryId: repository.id, developerId, branch: context?.branch ?? input.branch, headSha: context?.headSha ?? input.headSha, model: input.model,
+    sessionId: input.sessionId, repositoryId: repository?.id, developerId, branch: context?.branch ?? input.branch, headSha: context?.headSha ?? input.headSha, model: input.model,
     inputTokens: input.inputTokens, outputTokens: input.outputTokens, cachedInputTokens: input.cachedInputTokens, occurredAt, costUsd: estimateCost(input, rate), rateEffectiveFrom:rate.effectiveFrom,
-    attributionMethod: exact ? "hook_context" : input.source === "session_file" ? "session_fallback" : "branch_inferred", attributionConfidence: exact ? 1 : input.source === "session_file" ? .8 : .6
+    attributionMethod: exact ? "hook_context" : input.source === "session_file" ? "session_fallback" : "branch_inferred", attributionConfidence: exact ? 1 : input.source === "session_file" ? .8 : repository ? .6 : 0
   };
-  return { ...(await store.ingestEvent(event)), event };
+  return { ...(await store.ingestEvent(event)), event, pending:!repository };
 }
 
 type OtelValue = { stringValue?: string; intValue?: string | number; doubleValue?: number; boolValue?: boolean; kvlistValue?: { values?: Array<{ key: string; value?: OtelValue }> } };

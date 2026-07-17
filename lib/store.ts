@@ -9,6 +9,7 @@ export interface GovernorStore {
   getDeveloperByToken(token: string): Promise<Developer | undefined>;
   createDeveloper(input: Omit<Developer, "id" | "tokenHash"> & { token: string }): Promise<Developer>;
   saveContext(context: SessionContext): Promise<void>;
+  attachPendingEvents(context: SessionContext, repositoryId: string): Promise<number>;
   getContext(sessionId: string): Promise<SessionContext | undefined>;
   getVerificationSessions(developerId: string, after: string): Promise<VerificationSession[]>;
   getRates(): Promise<ModelRate[]>;
@@ -50,11 +51,19 @@ export class MemoryGovernorStore implements GovernorStore {
   async getDeveloperByToken(token: string) { return [...this.developers.values()].find((developer) => developer.tokenHash === hash(token)); }
   async createDeveloper(input: Omit<Developer, "id" | "tokenHash"> & { token: string }) { const developer={id:crypto.randomUUID(),githubLogin:input.githubLogin,email:input.email,tokenHash:hash(input.token)}; this.developers.set(developer.id,developer); return developer; }
   async saveContext(context: SessionContext) { this.contexts.set(context.sessionId, context); }
+  async attachPendingEvents(context: SessionContext, repositoryId: string) {
+    let attached=0;
+    for (const event of this.events.values()) {
+      if (event.sessionId!==context.sessionId || event.developerId!==context.developerId || event.repositoryId) continue;
+      event.repositoryId=repositoryId; event.branch=context.branch; event.headSha=context.headSha; event.attributionMethod="hook_context"; event.attributionConfidence=1; attached++;
+    }
+    return attached;
+  }
   async getContext(sessionId: string) { return this.contexts.get(sessionId); }
   async getVerificationSessions(developerId: string, after: string) {
     return [...this.contexts.values()]
       .filter((context) => context.developerId === developerId && context.observedAt >= after)
-      .map((context) => ({ ...context, eventCount:[...this.events.values()].filter((event) => event.developerId === developerId && event.sessionId === context.sessionId).length }))
+      .map((context) => ({ ...context, eventCount:[...this.events.values()].filter((event) => event.developerId === developerId && event.sessionId === context.sessionId && event.repositoryId).length }))
       .sort((a,b) => b.observedAt.localeCompare(a.observedAt));
   }
   async getRates() { return this.rates; }
@@ -76,9 +85,10 @@ export class PostgresGovernorStore implements GovernorStore {
   async getDeveloperByToken(token: string) { const r=await this.pool.query("SELECT id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\" FROM developers WHERE token_hash=$1",[hash(token)]); return r.rows[0] as Developer | undefined; }
   async createDeveloper(input: Omit<Developer,"id"|"tokenHash"> & {token:string}) { const developer={id:crypto.randomUUID(),githubLogin:input.githubLogin,email:input.email,tokenHash:hash(input.token)}; const r=await this.pool.query("INSERT INTO developers(id,github_login,email,token_hash) VALUES($1,$2,$3,$4) RETURNING id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\"",[developer.id,developer.githubLogin,developer.email ?? null,developer.tokenHash]); return r.rows[0] as Developer; }
   async saveContext(context: SessionContext) { await this.pool.query("INSERT INTO session_contexts(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id,observed_at=EXCLUDED.observed_at",[context.sessionId,context.repositorySlug,context.branch,context.headSha,context.developerId,context.observedAt]); }
+  async attachPendingEvents(context: SessionContext, repositoryId: string) { const r=await this.pool.query("UPDATE usage_events SET repository_id=$3,branch=$4,head_sha=$5,attribution_method='hook_context',attribution_confidence=1 WHERE session_id=$1 AND developer_id=$2 AND repository_id IS NULL",[context.sessionId,context.developerId,repositoryId,context.branch,context.headSha]); return r.rowCount ?? 0; }
   async getContext(sessionId: string) { const r=await this.pool.query("SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at AS \"observedAt\" FROM session_contexts WHERE session_id=$1",[sessionId]); return r.rows[0] as SessionContext | undefined; }
   async getVerificationSessions(developerId: string, after: string) {
-    const r=await this.pool.query("SELECT sc.session_id AS \"sessionId\",sc.repository_slug AS \"repositorySlug\",sc.branch,sc.head_sha AS \"headSha\",sc.observed_at AS \"observedAt\",COUNT(ue.id)::int AS \"eventCount\" FROM session_contexts sc LEFT JOIN usage_events ue ON ue.session_id=sc.session_id AND ue.developer_id=$1 WHERE sc.developer_id=$1 AND sc.observed_at >= $2 GROUP BY sc.session_id,sc.repository_slug,sc.branch,sc.head_sha,sc.observed_at ORDER BY sc.observed_at DESC",[developerId,after]);
+    const r=await this.pool.query("SELECT sc.session_id AS \"sessionId\",sc.repository_slug AS \"repositorySlug\",sc.branch,sc.head_sha AS \"headSha\",sc.observed_at AS \"observedAt\",COUNT(ue.id)::int AS \"eventCount\" FROM session_contexts sc LEFT JOIN usage_events ue ON ue.session_id=sc.session_id AND ue.developer_id=$1 AND ue.repository_id IS NOT NULL WHERE sc.developer_id=$1 AND sc.observed_at >= $2 GROUP BY sc.session_id,sc.repository_slug,sc.branch,sc.head_sha,sc.observed_at ORDER BY sc.observed_at DESC",[developerId,after]);
     return r.rows as VerificationSession[];
   }
   async getRates() { const r=await this.pool.query("SELECT model,effective_from::text AS \"effectiveFrom\",input_per_mtok::float AS \"inputPerMTok\",output_per_mtok::float AS \"outputPerMTok\",cached_input_per_mtok::float AS \"cachedInputPerMTok\" FROM model_rates"); return r.rows as ModelRate[]; }

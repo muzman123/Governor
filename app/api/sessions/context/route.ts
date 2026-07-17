@@ -8,5 +8,6 @@ export async function POST(request: Request) {
   if(!developer) return NextResponse.json({error:"Invalid developer telemetry token"},{status:401});
   const parsed=ContextSchema.safeParse(await request.json()); if(!parsed.success) return NextResponse.json({error:parsed.error.flatten()},{status:400});
   const context={...parsed.data,developerId:developer.id,observedAt:parsed.data.observedAt ?? new Date().toISOString()};
-  await store.saveContext(context); return NextResponse.json({ok:true,context});
+  await store.saveContext(context); const repository=await store.getRepositoryBySlug(context.repositorySlug); const attached=repository ? await store.attachPendingEvents(context,repository.id) : 0;
+  return NextResponse.json({ok:true,context,attached});
 }

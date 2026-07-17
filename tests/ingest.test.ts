@@ -18,6 +18,20 @@ test("session file fallback remains explicitly confidence-scored",async()=>{
   assert.equal(result.event?.attributionConfidence,.8); assert.equal(result.event?.attributionMethod,"session_fallback");
 });
 
+test("usage arriving before its signed context is held and attached",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo);
+  const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
+  const usage=await ingestUsage(store,developer.id,{eventKey:"early-usage",source:"otel",sessionId:"thread_late",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-17T10:00:00.000Z"});
+  assert.equal(usage.inserted,true); assert.equal(usage.pending,true); assert.equal(usage.event?.repositoryId,undefined);
+  const context={sessionId:"thread_late",repositorySlug:repo.slug,branch:"feature/receipt",headSha:"abc1234",developerId:developer.id,observedAt:"2026-07-17T10:00:01.000Z"};
+  await store.saveContext(context);
+  assert.equal(await store.attachPendingEvents(context,repo.id),1);
+  const events=await store.getEvents(repo.id);
+  assert.equal(events.find((event)=>event.eventKey==="early-usage")?.attributionMethod,"hook_context");
+  const verification=await store.getVerificationSessions(developer.id,"2026-07-17T09:59:00.000Z");
+  assert.equal(verification[0]?.eventCount,1);
+});
+
 test("normalizes current Codex OTLP token-count attributes",()=>{
   const events=normalizeOtlpLogs({resourceLogs:[{resource:{attributes:[
     {key:"conversation.id",value:{stringValue:"thread_1"}},
