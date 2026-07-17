@@ -44,3 +44,8 @@ test("normalizes current Codex OTLP token-count attributes",()=>{
   ]}]}]}]});
   assert.deepEqual(events,[{source:"otel",sessionId:"thread_1",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-17T10:24:03.000Z"}]);
 });
+
+test("normalizes an exporter timestamp expressed in seconds without pricing it as a 1970 event",()=>{
+  const events=normalizeOtlpLogs({resourceLogs:[{resource:{attributes:[{key:"conversation.id",value:{stringValue:"thread_2"}},{key:"model",value:{stringValue:"gpt-5.4-mini"}}]},scopeLogs:[{logRecords:[{timeUnixNano:"1784283843",attributes:[{key:"input_token_count",value:{intValue:"1"}},{key:"output_token_count",value:{intValue:"1"}}]}]}]}]});
+  assert.equal(events[0]?.occurredAt,"2026-07-17T10:24:03.000Z");
+});

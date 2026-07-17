@@ -37,10 +37,18 @@ const bodyObject = (body: OtelValue | undefined): Record<string, unknown> => {
   }
   return Object.fromEntries((body?.kvlistValue?.values ?? []).map((entry)=>[entry.key, value({key:entry.key,value:entry.value})]));
 };
+const timestamp = (raw: string | undefined) => {
+  const value=raw ? Number(raw) : NaN;
+  if (!Number.isFinite(value)) return new Date().toISOString();
+  // OTLP specifies nanoseconds, but accept common seconds/milliseconds/
+  // microseconds variants so a malformed exporter cannot turn a 2026 event into 1970.
+  const milliseconds=value>=1e18 ? value/1_000_000 : value>=1e15 ? value/1_000 : value>=1e12 ? value : value>=1e9 ? value*1_000 : NaN;
+  return Number.isFinite(milliseconds) && !Number.isNaN(new Date(milliseconds).valueOf()) ? new Date(milliseconds).toISOString() : new Date().toISOString();
+};
 
 /** Normalizes OTLP/HTTP JSON logs. Unknown events are ignored rather than guessed. */
 export function normalizeOtlpLogs(payload: unknown): UsageInput[] {
-  const root = payload as { resourceLogs?: Array<{ resource?: { attributes?: OtelAttribute[] }; scopeLogs?: Array<{ logRecords?: Array<{ timeUnixNano?: string; attributes?: OtelAttribute[]; traceId?: string; body?: OtelValue }> }> }> };
+  const root = payload as { resourceLogs?: Array<{ resource?: { attributes?: OtelAttribute[] }; scopeLogs?: Array<{ logRecords?: Array<{ timeUnixNano?: string; observedTimeUnixNano?: string; attributes?: OtelAttribute[]; traceId?: string; body?: OtelValue }> }> }> };
   const records = root.resourceLogs?.flatMap((resource)=>resource.scopeLogs?.flatMap((scope)=>(scope.logRecords ?? []).map((record)=>({resource,record}))) ?? []) ?? [];
   return records.flatMap(({resource,record}) => {
     const attrs=[...(resource.resource?.attributes ?? []),...(record.attributes ?? [])]; const body=bodyObject(record.body);
@@ -50,7 +58,6 @@ export function normalizeOtlpLogs(payload: unknown): UsageInput[] {
     const cachedInputTokens=numberAttr(attrs,["cached_token_count","cached_input_tokens","gen_ai.usage.cached_input_tokens","response.cached_input_tokens"]) || Number(body.cached_token_count ?? body.cached_input_tokens ?? 0);
     const model=stringAttr(attrs,["model","gen_ai.request.model","response.model"]) ?? (typeof body.model === "string" ? body.model : undefined);
     if (!model || (!inputTokens && !outputTokens)) return [];
-    const nanos=record.timeUnixNano ? Number(record.timeUnixNano) : Date.now();
-    return [{ source:"otel", sessionId:stringAttr(attrs,["conversation.id","conversation_id","session_id","codex.conversation_id"]) ?? record.traceId, model, inputTokens, outputTokens, cachedInputTokens, occurredAt:new Date(nanos / 1_000_000).toISOString() } satisfies UsageInput];
+    return [{ source:"otel", sessionId:stringAttr(attrs,["conversation.id","conversation_id","session_id","codex.conversation_id"]) ?? record.traceId, model, inputTokens, outputTokens, cachedInputTokens, occurredAt:timestamp(record.timeUnixNano ?? record.observedTimeUnixNano) } satisfies UsageInput];
   });
 }
