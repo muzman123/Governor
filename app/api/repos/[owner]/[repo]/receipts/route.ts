@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
-import { getStore } from "@/lib/store";
+import { requireRepositoryAccess } from "@/lib/app-access";
 
 type RouteParams = { owner: string; repo: string };
 
 export async function GET(_: Request, { params }: { params: Promise<RouteParams> }) {
-  const { owner, repo: repositoryName } = await params;
-  const slug = `${owner}/${repositoryName}`;
-  const store = getStore();
-  const repository = await store.getRepositoryBySlug(slug);
-
-  if (!repository) {
-    return NextResponse.json({ error: "Repository not found" }, { status: 404 });
+  try {
+    const { owner, repo: repositoryName } = await params;
+    const access=await requireRepositoryAccess(`${owner}/${repositoryName}`);
+    return NextResponse.json(access.overview);
+  } catch (error) {
+    const unauthenticated=error instanceof Error && error.message==="UNAUTHENTICATED";
+    return NextResponse.json({error:unauthenticated?"Sign in required":"Repository not found"},{status:unauthenticated?401:404});
   }
-
-  return NextResponse.json(await store.getDashboard(repository.id));
 }

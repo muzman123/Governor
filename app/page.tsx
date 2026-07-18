@@ -1,12 +1,3 @@
-import { DemoDashboard } from "@/components/demo-dashboard";
-import { getStore } from "@/lib/store";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-
-export default async function Home() {
-  const store = getStore();
-  const repo = await store.getRepositoryBySlug("acme/checkout");
-  if (!repo) throw new Error("Seed repository missing");
-  const dashboard = await store.getDashboard(repo.id);
-  return <DemoDashboard dashboard={dashboard} />;
-}
+export default function Home() { return <main className="landing-shell"><nav className="landing-nav"><Link className="wordmark" href="/">governor<span>.</span></Link><div><Link className="quiet-link" href="/demo">Explore demo</Link><Link className="button small-button" href="/api/auth/github/start">Connect GitHub</Link></div></nav><section className="hero"><div className="eyebrow">AI engineering spend, in context</div><h1>Every Codex dollar,<br/><em>attached to the work</em> it produced.</h1><p className="hero-copy">Governor puts transparent estimated cost receipts on pull requests and gives engineering teams a calm, auditable view of AI development spend.</p><div className="hero-actions"><Link className="button" href="/api/auth/github/start">Open your workspace <span>→</span></Link><Link className="text-button" href="/demo">View the public sandbox</Link></div><div className="hero-proof"><span className="signal-dot"/> Token metadata + Git context only <span>•</span> Never prompts, responses, or generated code</div></section><section className="landing-grid"><article><span>01</span><h2>Observe work</h2><p>Codex sends token metadata while Governor records only repository, branch, commit, and session context.</p></article><article><span>02</span><h2>Calculate clearly</h2><p>Effective-dated rates and attribution confidence make every estimate explainable—not a black box.</p></article><article><span>03</span><h2>Govern with context</h2><p>Pull requests receive receipts, while the dashboard surfaces patterns worth understanding.</p></article></section></main>; }

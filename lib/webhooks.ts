@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { explainReceipt } from "./explainer";
 import { publishCommitCheck, publishPullRequestReceipt } from "./github";
 import { buildReceipt } from "./receipts";
+import { observeReceipt } from "./observations";
 import type { GovernorStore } from "./store";
 import type { PullRequest, Repository } from "./types";
 
@@ -31,6 +32,7 @@ async function handlePullRequest(store: GovernorStore, payload: GitHubPayload) {
   const repo=await repositoryForPayload(store,payload); const raw=payload.pull_request; const number=Number(payload.number);
   const existing=await store.getPullRequest(repo.id,number); const pr: PullRequest={id:existing?.id ?? id("pr",`${repo.id}_${number}`),repositoryId:repo.id,number,branch:raw.head.ref,headSha:raw.head.sha,title:raw.title,state:raw.state === "closed" ? "closed" : "open",commentId:existing?.commentId,updatedAt:new Date().toISOString()};
   const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:number,title:pr.title,headSha:pr.headSha});
+  const allEvents=await store.getEvents(repo.id); const dashboard=await store.getDashboard(repo.id); receipt.observation=observeReceipt(receipt,events,allEvents.filter((event)=>event.branch!==pr.branch),dashboard.receipts);
   receipt.explanation=await explainReceipt(receipt); await store.saveReceipt(receipt);
   pr.commentId=await publishPullRequestReceipt(repo,pr,receipt); await store.upsertPullRequest(pr);
   return {handled:true,kind:"pull_request",receipt};

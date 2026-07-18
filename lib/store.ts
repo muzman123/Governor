@@ -5,9 +5,13 @@ import { DEFAULT_MODEL_RATES } from "./pricing";
 
 export interface GovernorStore {
   getRepositoryBySlug(slug: string): Promise<Repository | undefined>;
+  listRepositories(): Promise<Repository[]>;
   upsertRepository(repo: Repository): Promise<Repository>;
   getDeveloperByToken(token: string): Promise<Developer | undefined>;
+  getDeveloperById(id: string): Promise<Developer | undefined>;
+  getDeveloperByGithubLogin(githubLogin: string): Promise<Developer | undefined>;
   createDeveloper(input: Omit<Developer, "id" | "tokenHash"> & { token: string }): Promise<Developer>;
+  rotateDeveloperToken(id: string, token: string): Promise<void>;
   saveContext(context: SessionContext): Promise<void>;
   attachPendingEvents(context: SessionContext, repositoryId: string): Promise<number>;
   getContext(sessionId: string): Promise<SessionContext | undefined>;
@@ -47,9 +51,13 @@ export class MemoryGovernorStore implements GovernorStore {
     this.prs.set(this.key(repo.id, 412),pr1); this.prs.set(this.key(repo.id,408),pr2);
   }
   async getRepositoryBySlug(slug: string) { return [...this.repos.values()].find((repo) => repo.slug === slug); }
+  async listRepositories() { return [...this.repos.values()]; }
   async upsertRepository(repo: Repository) { this.repos.set(repo.id, repo); return repo; }
   async getDeveloperByToken(token: string) { return [...this.developers.values()].find((developer) => developer.tokenHash === hash(token)); }
+  async getDeveloperById(id: string) { return this.developers.get(id); }
+  async getDeveloperByGithubLogin(githubLogin: string) { return [...this.developers.values()].find((developer) => developer.githubLogin.toLowerCase()===githubLogin.toLowerCase()); }
   async createDeveloper(input: Omit<Developer, "id" | "tokenHash"> & { token: string }) { const developer={id:crypto.randomUUID(),githubLogin:input.githubLogin,email:input.email,tokenHash:hash(input.token)}; this.developers.set(developer.id,developer); return developer; }
+  async rotateDeveloperToken(id: string, token: string) { const developer=this.developers.get(id); if(!developer) throw new Error("Developer not found"); developer.tokenHash=hash(token); }
   async saveContext(context: SessionContext) { this.contexts.set(context.sessionId, context); }
   async attachPendingEvents(context: SessionContext, repositoryId: string) {
     let attached=0;
@@ -81,9 +89,13 @@ export class PostgresGovernorStore implements GovernorStore {
   private pool: Pool;
   constructor(url: string) { this.pool = new Pool({ connectionString:url, ssl: url.includes("localhost") ? undefined : { rejectUnauthorized:false } }); }
   async getRepositoryBySlug(slug: string) { const r=await this.pool.query("SELECT id, slug, installation_id AS \"installationId\", default_branch AS \"defaultBranch\" FROM repositories WHERE slug=$1",[slug]); return r.rows[0] as Repository | undefined; }
+  async listRepositories() { const r=await this.pool.query("SELECT id,slug,installation_id AS \"installationId\",default_branch AS \"defaultBranch\" FROM repositories ORDER BY slug"); return r.rows as Repository[]; }
   async upsertRepository(repo: Repository) { const r=await this.pool.query("INSERT INTO repositories(id,slug,installation_id,default_branch) VALUES($1,$2,$3,$4) ON CONFLICT (slug) DO UPDATE SET installation_id=EXCLUDED.installation_id,default_branch=EXCLUDED.default_branch RETURNING id,slug,installation_id AS \"installationId\",default_branch AS \"defaultBranch\"",[repo.id,repo.slug,repo.installationId ?? null,repo.defaultBranch]); return r.rows[0] as Repository; }
   async getDeveloperByToken(token: string) { const r=await this.pool.query("SELECT id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\" FROM developers WHERE token_hash=$1",[hash(token)]); return r.rows[0] as Developer | undefined; }
+  async getDeveloperById(id: string) { const r=await this.pool.query("SELECT id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\" FROM developers WHERE id=$1",[id]); return r.rows[0] as Developer | undefined; }
+  async getDeveloperByGithubLogin(githubLogin: string) { const r=await this.pool.query("SELECT id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\" FROM developers WHERE LOWER(github_login)=LOWER($1)",[githubLogin]); return r.rows[0] as Developer | undefined; }
   async createDeveloper(input: Omit<Developer,"id"|"tokenHash"> & {token:string}) { const developer={id:crypto.randomUUID(),githubLogin:input.githubLogin,email:input.email,tokenHash:hash(input.token)}; const r=await this.pool.query("INSERT INTO developers(id,github_login,email,token_hash) VALUES($1,$2,$3,$4) RETURNING id,github_login AS \"githubLogin\",email,token_hash AS \"tokenHash\"",[developer.id,developer.githubLogin,developer.email ?? null,developer.tokenHash]); return r.rows[0] as Developer; }
+  async rotateDeveloperToken(id: string, token: string) { await this.pool.query("UPDATE developers SET token_hash=$2 WHERE id=$1",[id,hash(token)]); }
   async saveContext(context: SessionContext) { await this.pool.query("INSERT INTO session_contexts(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id,observed_at=EXCLUDED.observed_at",[context.sessionId,context.repositorySlug,context.branch,context.headSha,context.developerId,context.observedAt]); }
   async attachPendingEvents(context: SessionContext, repositoryId: string) { const r=await this.pool.query("UPDATE usage_events SET repository_id=$3,branch=$4,head_sha=$5,attribution_method='hook_context',attribution_confidence=1 WHERE session_id=$1 AND developer_id=$2 AND repository_id IS NULL",[context.sessionId,context.developerId,repositoryId,context.branch,context.headSha]); return r.rowCount ?? 0; }
   async getContext(sessionId: string) { const r=await this.pool.query("SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at AS \"observedAt\" FROM session_contexts WHERE session_id=$1",[sessionId]); return r.rows[0] as SessionContext | undefined; }

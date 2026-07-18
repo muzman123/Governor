@@ -1,5 +1,8 @@
 CREATE TABLE IF NOT EXISTS repositories (id TEXT PRIMARY KEY, slug TEXT UNIQUE NOT NULL, installation_id BIGINT, default_branch TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS developers (id TEXT PRIMARY KEY, github_login TEXT NOT NULL, email TEXT, token_hash TEXT UNIQUE NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS developers_github_login_unique ON developers(LOWER(github_login));
+CREATE TABLE IF NOT EXISTS web_sessions (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, developer_id TEXT NOT NULL REFERENCES developers(id) ON DELETE CASCADE, github_login TEXT NOT NULL, github_token_ciphertext TEXT NOT NULL, setup_token_ciphertext TEXT, expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE INDEX IF NOT EXISTS web_sessions_token_expiry ON web_sessions(token_hash, expires_at);
 CREATE TABLE IF NOT EXISTS model_rates (model TEXT NOT NULL, effective_from DATE NOT NULL, input_per_mtok NUMERIC NOT NULL, output_per_mtok NUMERIC NOT NULL, cached_input_per_mtok NUMERIC NOT NULL, PRIMARY KEY(model, effective_from));
 CREATE TABLE IF NOT EXISTS session_contexts (session_id TEXT PRIMARY KEY, repository_slug TEXT NOT NULL, branch TEXT NOT NULL, head_sha TEXT NOT NULL, developer_id TEXT NOT NULL, observed_at TIMESTAMPTZ NOT NULL);
 CREATE INDEX IF NOT EXISTS session_contexts_developer_observed ON session_contexts(developer_id, observed_at DESC);

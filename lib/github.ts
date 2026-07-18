@@ -19,7 +19,7 @@ export async function publishCommitCheck(repo: Repository, sha: string, receipt:
 export async function publishPullRequestReceipt(repo: Repository, pr: PullRequest, receipt: Receipt): Promise<number | undefined> {
   if(!repo.installationId) return pr.commentId;
   const octokit=client(repo.installationId); if(!octokit) return pr.commentId;
-  const [owner,repoName]=repo.slug.split("/"); const body=receiptMarkdown(receipt,`${process.env.GOVERNOR_URL ?? "http://localhost:3000"}/?repo=${encodeURIComponent(repo.slug)}`);
+  const [owner,repoName]=repo.slug.split("/"); const body=receiptMarkdown(receipt,`${process.env.GOVERNOR_URL ?? "http://localhost:3000"}/app/repos/${repo.slug}/pulls/${pr.number}`);
   if(pr.commentId) { await octokit.issues.updateComment({owner,repo:repoName,comment_id:pr.commentId,body}); return pr.commentId; }
   const comments=await octokit.issues.listComments({owner,repo:repoName,issue_number:pr.number,per_page:100}); const existing=comments.data.find((comment)=>comment.user?.type==="Bot" && comment.body?.includes("governor-cost-receipt"));
   if(existing) { await octokit.issues.updateComment({owner,repo:repoName,comment_id:existing.id,body}); return existing.id; }

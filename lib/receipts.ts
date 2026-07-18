@@ -16,7 +16,8 @@ export function receiptMarkdown(receipt: Receipt, dashboardUrl: string): string 
   const money = (n: number) => `$${n.toFixed(2)}`;
   const modelLines = receipt.models.map((model) => "- `" + model.model + "`: " + money(model.costUsd) + " · " + model.inputTokens.toLocaleString() + " input / " + model.outputTokens.toLocaleString() + " output tokens").join("\n") || "- No Codex usage has been attributed to this branch yet.";
   const confidence = `${Math.round(receipt.confidence * 100)}% ${receipt.confidence >= 0.95 ? "exact context" : "inferred context"}`;
-  return `<!-- governor-cost-receipt -->\n## Governor cost receipt\n\n**Estimated Codex cost: ${money(receipt.totalCost)}** · ${receipt.eventCount} usage events · attribution: **${confidence}**\n\n${modelLines}\n\n${receipt.explanation ? `> ${receipt.explanation}\n\n` : ""}These are transparent token-rate estimates, not invoice totals. Governor never stores prompts, responses, or generated code. [View calculation](${dashboardUrl})`;
+  const observation=receipt.observation ? `\n> **Governor observation — ${receipt.observation.title}.** ${receipt.observation.explanation}${receipt.observation.impactUsd ? ` Estimated impact: ${money(receipt.observation.impactUsd)}.` : ""}\n` : "";
+  return `<!-- governor-cost-receipt -->\n## Governor cost receipt\n\n**Estimated Codex cost: ${money(receipt.totalCost)}** · ${receipt.eventCount} usage events · attribution: **${confidence}**\n\n${modelLines}\n${observation}\n${receipt.explanation ? `> ${receipt.explanation}\n\n` : ""}These are transparent token-rate estimates, not invoice totals. Governor never stores prompts, responses, or generated code. [View calculation](${dashboardUrl})`;
 }
 
 function round(value: number) { return Math.round((value + Number.EPSILON) * 1000000) / 1000000; }

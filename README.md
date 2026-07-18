@@ -28,7 +28,7 @@ Create a GitHub App with **Checks: Read & write**, **Pull requests: Read & write
 
 ## Developer setup
 
-Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`) and visit `/api/auth/github/start`. After approval it displays a one-time telemetry token. From this repository on the developer machine:
+Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`) and visit `/api/auth/github/start`. OAuth now signs the user into the private `/app` workspace and exposes only repositories that both the signed-in GitHub user can access and Governor has connected. The setup page displays a one-time telemetry token. From this repository on the developer machine:
 
 ```bash
 npm run governor -- join --url https://YOUR_HOST --token YOUR_TELEMETRY_TOKEN
@@ -39,7 +39,7 @@ npm run governor -- verify 120
 
 ## Production deployment
 
-Deploy the Next.js app to Vercel, Railway, or Render, use Supabase/Postgres for `DATABASE_URL`, then run `npm run db:init` to apply [`db/schema.sql`](db/schema.sql), seed the effective-dated rates, and create the public demo tenant. Set `GOVERNOR_URL` to the public deployment URL. Configure the OTLP receiver at `/v1/logs` for JSON OTLP traffic, then point the GitHub App and OAuth callback to the same public host.
+Deploy the Next.js app to Vercel, Railway, or Render, use Supabase/Postgres for `DATABASE_URL`, then run `npm run db:init` to apply [`db/schema.sql`](db/schema.sql), seed the effective-dated rates, and create the public demo tenant. Set `GOVERNOR_URL` to the public deployment URL and add a random `GOVERNOR_SESSION_SECRET` (at least 32 random bytes) to encrypt GitHub OAuth tokens held server-side. Configure the OTLP receiver at `/v1/logs` for JSON OTLP traffic, then point the GitHub App and OAuth callback to the same public host. Existing users must sign in again after deployment so Governor can request the repository-read OAuth scope required by the workspace.
 
 ## How Codex and GPT-5.6 were used
 
