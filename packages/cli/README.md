@@ -12,6 +12,8 @@ npx --yes @muzman123/governor@latest connect --url https://YOUR_GOVERNOR_HOST --
 
 The command creates a backup of the Codex configuration, keeps prompt collection disabled, preserves an existing Codex `notify` command, and waits for a real Codex turn to verify the connection. Restart Codex when it asks, then complete one task from a connected GitHub repository.
 
+To intentionally replace a previous Governor connection on the same computer, generate a replacement token in Governor Setup and append `--replace`. This replaces only Governor's managed telemetry block; it never overwrites a third-party OTel configuration.
+
 ## Other commands
 
 ```bash

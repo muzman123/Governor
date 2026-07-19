@@ -9,6 +9,7 @@ export function SetupPanel({url,githubAppUrl}:{url:string;githubAppUrl?:string})
   const [state,setState]=useState<SetupState>("loading");
   const [copied,setCopied]=useState<"join"|"verify"|undefined>();
   const [verified,setVerified]=useState(false);
+  const [replacing,setReplacing]=useState(false);
 
   useEffect(()=>{
     fetch("/api/app/setup/token")
@@ -25,10 +26,10 @@ export function SetupPanel({url,githubAppUrl}:{url:string;githubAppUrl?:string})
 
   const replaceConnection=async()=>{
     setState("loading");
-    try { const response=await fetch("/api/app/setup/token",{method:"POST"}); const data=await response.json(); if(!response.ok || !data.token) throw new Error(data.error); setToken(data.token); setState("ready"); }
+    try { const response=await fetch("/api/app/setup/token",{method:"POST"}); const data=await response.json(); if(!response.ok || !data.token) throw new Error(data.error); setToken(data.token); setReplacing(true); setState("ready"); }
     catch { setState("error"); }
   };
-  const joinCommand=token?`npx --yes @muzman123/governor@latest connect --url ${url} --token ${token}`:"";
+  const joinCommand=token?`npx --yes @muzman123/governor@latest connect${replacing?" --replace":""} --url ${url} --token ${token}`:"";
   const verifyCommand="npx --yes @muzman123/governor@latest verify --wait 180";
   const copy=async(kind:"join"|"verify",value:string)=>{ await navigator.clipboard.writeText(value); setCopied(kind); window.setTimeout(()=>setCopied(undefined),1600); };
 
@@ -37,7 +38,7 @@ export function SetupPanel({url,githubAppUrl}:{url:string;githubAppUrl?:string})
     {state==="loading"&&<p>Checking your setup status...</p>}
     {state==="error"&&<div className="setup-status error"><strong>We could not load a setup command.</strong><span>Refresh the page, then sign in again if the problem continues.</span></div>}
     {state==="ready"&&<>
-      <p>Run this one-time command from any terminal. It downloads Governor automatically, preserves existing Codex notifications, keeps prompt collection disabled, and waits for verification.</p>
+      <p>{replacing?"This safely replaces Governor's existing connection on this computer. It preserves other Codex settings and never overwrites a third-party OTel setup.":"Run this one-time command from any terminal. It downloads Governor automatically, preserves existing Codex notifications, keeps prompt collection disabled, and waits for verification."}</p>
       <code>{joinCommand}</code>
       <div className="command-actions"><button className="button" onClick={()=>copy("join",joinCommand)}>{copied==="join"?"Copied":"Copy setup command"}</button></div>
       <p className="command-note">Treat this token like a password. It is shown once for this connection.</p>
