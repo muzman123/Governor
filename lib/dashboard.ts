@@ -1,15 +1,17 @@
 import type { GovernorStore } from "./store";
 import type { ModelBreakdown, RepositoryOverview, UsageEvent } from "./types";
 
+const timestamp=(value:string|Date)=>value instanceof Date?value.toISOString():String(value);
+
 export async function repositoryOverview(store: GovernorStore, repositoryId: string): Promise<RepositoryOverview> {
   const dashboard=await store.getDashboard(repositoryId); const events=await store.getEvents(repositoryId); const byModel=new Map<string,ModelBreakdown>(); const byDay=new Map<string,number>();
   for(const event of events) {
     const model=byModel.get(event.model) ?? {model:event.model,inputTokens:0,outputTokens:0,cachedInputTokens:0,costUsd:0};
     model.inputTokens+=event.inputTokens; model.outputTokens+=event.outputTokens; model.cachedInputTokens+=event.cachedInputTokens; model.costUsd+=event.costUsd; byModel.set(event.model,model);
-    const date=event.occurredAt.slice(0,10); byDay.set(date,(byDay.get(date) ?? 0)+event.costUsd);
+    const date=timestamp(event.occurredAt).slice(0,10); byDay.set(date,(byDay.get(date) ?? 0)+event.costUsd);
   }
   const spendTrend=[...byDay.entries()].sort(([a],[b])=>a.localeCompare(b)).slice(-14).map(([date,costUsd])=>({date,costUsd:Math.round(costUsd*1_000_000)/1_000_000}));
-  const recentEvents=[...events].sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,12);
+  const recentEvents=[...events].map((event)=>({...event,occurredAt:timestamp(event.occurredAt)})).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)).slice(0,12);
   return {...dashboard,modelSpend:[...byModel.values()].map((model)=>({...model,costUsd:Math.round(model.costUsd*1_000_000)/1_000_000})).sort((a,b)=>b.costUsd-a.costUsd),spendTrend,recentEvents,lastActivityAt:recentEvents[0]?.occurredAt,telemetryHealthy:Boolean(recentEvents.length)};
 }
 

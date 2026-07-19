@@ -2,14 +2,14 @@ import Link from "next/link";
 import type { Dashboard, Receipt, Repository, RepositoryOverview } from "@/lib/types";
 import { observationFallback } from "@/lib/observations";
 import { AutoRefresh } from "./live-refresh";
+import { AppNavigation } from "./app-navigation";
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:2}).format(value);
 const compact=(value:number)=>new Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(value);
 const date=(value?:string)=>value?new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(new Date(value)):"No activity yet";
 const confidence=(value:number)=>value>=.95?"Exact context":"Inferred context";
 
-export function AppShell({children,active,login,repositories}:{children:React.ReactNode;active:"overview"|"setup"|"settings"|"repository";login:string;repositories:Repository[]}) { return <div className="app-shell"><aside className="sidebar"><Link className="wordmark" href="/app">governor<span>.</span></Link><div className="workspace-label">WORKSPACE</div><nav className="side-nav"><Nav href="/app" label="Overview" active={active==="overview"}/><Nav href="/app/setup" label="Setup" active={active==="setup"}/><Nav href="/app/settings" label="Settings" active={active==="settings"}/></nav><div className="repo-rail"><div className="workspace-label">REPOSITORIES</div>{repositories.length?repositories.map((repo)=><Link key={repo.id} className={active==="repository"?"repo-link selected":"repo-link"} href={`/app/repos/${repo.slug}`}><span className="repo-mark">⌘</span>{repo.slug}</Link>):<Link className="repo-link" href="/app/setup">Connect a repository</Link>}</div><div className="sidebar-footer"><span className="privacy-dot"/> Prompt-safe telemetry<br/><strong>@{login}</strong></div></aside><div className="mobile-bar"><Link className="wordmark" href="/app">governor<span>.</span></Link><Link href="/app/setup">Setup</Link></div><main className="app-main">{children}</main></div>; }
-function Nav({href,label,active}:{href:string;label:string;active:boolean}) { return <Link href={href} className={active?"nav-item active":"nav-item"}><span>{label==="Overview"?"◫":label==="Setup"?"◎":"⚙"}</span>{label}</Link>; }
+export function AppShell({children,login,repositories}:{children:React.ReactNode;login:string;repositories:Repository[]}) { return <div className="app-shell"><AppNavigation login={login} repositories={repositories}/><main className="app-main">{children}</main></div>; }
 
 export function PageHeader({eyebrow,title,description,action}:{eyebrow:string;title:string;description?:string;action?:React.ReactNode}) { return <header className="page-header"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1>{description&&<p>{description}</p>}</div>{action}</header>; }
 export function MetricCard({label,value,detail,tone}:{label:string;value:string;detail?:string;tone?:"good"|"accent"}) { return <article className={`metric-card ${tone??""}`}><div className="metric-label">{label}</div><strong>{value}</strong>{detail&&<small>{detail}</small>}</article>; }
