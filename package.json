@@ -10,7 +10,9 @@
     "test": "tsx --test tests/**/*.test.ts",
     "seed": "tsx scripts/seed-demo.ts",
     "db:init": "tsx scripts/init-db.ts",
-    "governor": "node packages/cli/bin/governor.mjs"
+    "governor": "node packages/cli/bin/governor.mjs",
+    "cli:test": "npm test --prefix packages/cli",
+    "cli:pack": "npm pack --dry-run ./packages/cli"
   },
   "dependencies": {
     "@octokit/auth-app": "^8.1.0",

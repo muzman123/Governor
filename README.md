@@ -4,7 +4,7 @@ Governor puts transparent **estimated Codex cost receipts** on GitHub pushes and
 
 ## What works
 
-- A developer connects a user-level Codex OTel exporter and a notify hook with `governor join`.
+- A developer connects a user-level Codex OTel exporter and a notify hook with one `governor connect` command.
 - The hook sends only session ID, GitHub repository, branch, HEAD SHA, and timestamp. The OTel receiver normalizes token metadata and uses that context to attribute work.
 - Governor applies an effective-dated token price table, retaining inputs, model rate version, and attribution confidence for every estimate.
 - GitHub `push` webhooks create a neutral **Governor — estimated Codex cost** Check Run. PR open/synchronize webhooks create or update one cost-receipt comment.
@@ -28,14 +28,13 @@ Create a GitHub App with **Checks: Read & write**, **Pull requests: Read & write
 
 ## Developer setup
 
-Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`) and visit `/api/auth/github/start`. OAuth now signs the user into the private `/app` workspace and exposes only repositories that both the signed-in GitHub user can access and Governor has connected. The setup page displays a one-time telemetry token. From this repository on the developer machine:
+Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`) and visit `/api/auth/github/start`. OAuth now signs the user into the private `/app` workspace and exposes only repositories that both the signed-in GitHub user can access and Governor has connected. The setup page displays a one-time telemetry token. From any terminal on the developer machine:
 
 ```bash
-npm run governor -- join --url https://YOUR_HOST --token YOUR_TELEMETRY_TOKEN
-npm run governor -- verify 120
+npx --yes @muzman123/governor@latest connect --url https://YOUR_HOST --token YOUR_TELEMETRY_TOKEN
 ```
 
-`join` creates a timestamped backup before changing `~/.codex/config.toml`, keeps `log_user_prompt = false`, and wraps an existing `notify` command so both it and Governor receive Codex completion payloads. It never changes an existing `[otel]` configuration. `verify` waits for one real Codex turn and reports whether Governor saw both signed git context and its matching usage event. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
+`connect` creates a timestamped backup before changing `~/.codex/config.toml`, keeps `log_user_prompt = false`, wraps an existing `notify` command, then waits up to ten minutes for one real Codex turn to verify the signed-context and usage join. It never changes an existing `[otel]` configuration. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
 
 ## Production deployment
 
@@ -47,4 +46,4 @@ Codex accelerated the architecture, TypeScript implementation, test design, data
 
 ## Judge test path
 
-Use the hosted public sandbox to inspect aggregate receipts without an account. For a live test, install the App on a disposable repository, obtain a telemetry token through OAuth, run `governor join`, work with Codex on a branch, then push/open a PR. The PR receipt and Check Run update without a rebuild.
+Use the hosted public sandbox to inspect aggregate receipts without an account. For a live test, install the App on a disposable repository, obtain a telemetry token through OAuth, run `governor connect`, work with Codex on a branch, then push/open a PR. The PR receipt and Check Run update without a rebuild.
