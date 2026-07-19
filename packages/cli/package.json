@@ -1,7 +1,15 @@
 {
-  "name": "governor",
+  "name": "@muzman123/governor",
   "version": "0.1.0",
+  "description": "Connect Codex telemetry to Governor cost receipts.",
+  "license": "MIT",
   "type": "module",
-  "bin": { "governor": "./bin/governor.mjs" },
-  "files": ["bin"]
+  "scripts": {
+    "test": "node --check bin/governor.mjs && node --check bin/governor-hook.mjs && node --check bin/governor-notify-dispatcher.mjs"
+  },
+  "bin": "./bin/governor.mjs",
+  "files": ["bin", "README.md"],
+  "engines": { "node": ">=20" },
+  "keywords": ["codex", "openai", "github", "ai-cost", "telemetry"],
+  "publishConfig": { "access": "public" }
 }
