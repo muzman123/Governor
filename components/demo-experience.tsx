@@ -3,6 +3,7 @@ import type { Dashboard } from "@/lib/types";
 import { MetricCard, PrivacyNotice } from "./governor-ui";
 
 const money=(value:number)=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",minimumFractionDigits:2}).format(value);
+const outcome=(value?:string)=>value==="merged"?"Merged":value==="closed_unmerged"?"Closed without merge":"Open";
 
 export function DemoExperience({dashboard}:{dashboard:Dashboard}) {
   const receipt=dashboard.receipts[0];
@@ -21,6 +22,7 @@ export function DemoExperience({dashboard}:{dashboard:Dashboard}) {
       <article className="panel demo-receipt-preview">
         <div className="panel-heading"><div><div className="eyebrow">Example pull request receipt</div><h2>{receipt?`#${receipt.prNumber} ${receipt.title}`:"Receipt preview"}</h2></div><span className="demo-pill">Sample</span></div>
         <div className="demo-receipt-total"><div><span>Estimated Codex cost</span><strong>{money(receipt?.totalCost ?? 1.71)}</strong></div><div><strong>{receipt?.eventCount ?? 3} events</strong><small>100% exact context</small></div></div>
+        <div className="demo-actors">{(receipt?.actors ?? []).map((actor)=><div key={actor.actorType}><span className={`actor-dot ${actor.actorType}`}/><strong>{actor.label}</strong><small>{money(actor.costUsd)} · {actor.eventCount} event{actor.eventCount===1?"":"s"}</small></div>)}<span className={`outcome-badge ${receipt?.outcome ?? "open"}`}>PR outcome: {outcome(receipt?.outcome)}</span></div>
         <div className="demo-models">{(receipt?.models ?? []).map((model)=><div key={model.model}><span>{model.model}</span><strong>{money(model.costUsd)}</strong><small>{model.inputTokens.toLocaleString()} input / {model.outputTokens.toLocaleString()} output</small></div>)}</div>
         <div className="demo-receipt-footer">This is an estimated token-rate calculation, not an invoice total.</div>
       </article>
@@ -28,7 +30,7 @@ export function DemoExperience({dashboard}:{dashboard:Dashboard}) {
         <div className="observation-icon">i</div><div><div className="eyebrow">Governor observation - sample</div><h2>Low cache reuse increased estimated cost.</h2><p>Cache utilization was 12% versus this repository's 64% baseline; approximately $3.10 of this sample receipt was reprocessed context.</p><div className="observation-evidence">Evidence: cache utilization 12%; repository baseline 64%; 38 historical usage events.</div><div className="observation-meta"><span>Estimated impact $3.10</span><span>Confidence 96%</span><span>Deterministic calculation</span></div></div>
       </article>
     </section>
-    <section className="panel demo-flow"><div><div className="eyebrow">How it works</div><h2>Three links, one auditable answer.</h2></div><ol><li><span>01</span> Codex emits prompt-safe token metadata.</li><li><span>02</span> Governor joins it to signed Git repository and branch context.</li><li><span>03</span> GitHub receives a transparent PR receipt.</li></ol></section>
+    <section className="panel demo-flow"><div><div className="eyebrow">How it works</div><h2>Three links, one auditable answer.</h2></div><ol><li><span>01</span> A developer or autonomous Codex agent emits prompt-safe token metadata.</li><li><span>02</span> Governor joins it to signed Git or GitHub Actions context.</li><li><span>03</span> GitHub receives a receipt with cost, actor split, and PR outcome.</li></ol></section>
     <PrivacyNotice/>
   </main>;
 }

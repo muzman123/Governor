@@ -16,7 +16,7 @@ async function repositoryForPayload(store: GovernorStore, payload: GitHubPayload
 
 export async function handleGitHubWebhook(store: GovernorStore, eventName: string, payload: GitHubPayload) {
   if (eventName === "push") return handlePush(store,payload);
-  if (eventName === "pull_request" && ["opened","reopened","synchronize","edited"].includes(payload.action)) return handlePullRequest(store,payload);
+  if (eventName === "pull_request" && ["opened","reopened","synchronize","edited","closed"].includes(payload.action)) return handlePullRequest(store,payload);
   return { handled:false };
 }
 
@@ -30,12 +30,19 @@ async function handlePush(store: GovernorStore, payload: GitHubPayload) {
 
 async function handlePullRequest(store: GovernorStore, payload: GitHubPayload) {
   const repo=await repositoryForPayload(store,payload); const raw=payload.pull_request; const number=Number(payload.number);
-  const existing=await store.getPullRequest(repo.id,number); const pr: PullRequest={id:existing?.id ?? id("pr",`${repo.id}_${number}`),repositoryId:repo.id,number,branch:raw.head.ref,headSha:raw.head.sha,title:raw.title,state:raw.state === "closed" ? "closed" : "open",commentId:existing?.commentId,updatedAt:new Date().toISOString()};
-  const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:number,title:pr.title,headSha:pr.headSha});
+  const existing=await store.getPullRequest(repo.id,number); const closed=raw.state === "closed"; const outcome:PullRequest["outcome"]=closed ? raw.merged ? "merged" : "closed_unmerged" : "open";
+  const pr: PullRequest={id:existing?.id ?? id("pr",`${repo.id}_${number}`),repositoryId:repo.id,number,branch:raw.head.ref,headSha:raw.head.sha,title:raw.title,state:closed ? "closed" : "open",outcome,commentId:existing?.commentId,mergedAt:outcome === "merged" ? raw.merged_at ?? new Date().toISOString() : undefined,closedAt:closed ? raw.closed_at ?? new Date().toISOString() : undefined,updatedAt:new Date().toISOString()};
+  const receipt=await refreshPullRequestReceipt(store,repo,pr);
+  return {handled:true,kind:"pull_request",receipt};
+}
+
+/** Recalculates one known PR after a webhook or direct GitHub Actions upload. */
+export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repository, pr: PullRequest) {
+  const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:pr.number,title:pr.title,headSha:pr.headSha,outcome:pr.outcome,outcomeAt:pr.mergedAt ?? pr.closedAt});
   const allEvents=await store.getEvents(repo.id); const dashboard=await store.getDashboard(repo.id); receipt.observation=observeReceipt(receipt,events,allEvents.filter((event)=>event.branch!==pr.branch),dashboard.receipts);
   receipt.explanation=await explainReceipt(receipt); await store.saveReceipt(receipt);
   pr.commentId=await publishPullRequestReceipt(repo,pr,receipt); await store.upsertPullRequest(pr);
-  return {handled:true,kind:"pull_request",receipt};
+  return receipt;
 }
 
 export function signingState(returnTo = "/"): string { const secret=process.env.GITHUB_OAUTH_STATE_SECRET ?? process.env.GITHUB_WEBHOOK_SECRET ?? "development-only"; const payload=Buffer.from(JSON.stringify({returnTo,nonce:crypto.randomUUID(),expires:Date.now()+10*60_000})).toString("base64url"); const signature=crypto.createHmac("sha256",secret).update(payload).digest("base64url"); return `${payload}.${signature}`; }

@@ -1,0 +1,42 @@
+# Copy into the governed repository as .github/workflows/codex-agent.yml.
+# The runner must be trusted: this workflow intentionally allows Codex to make
+# repository changes. Keep OPENAI_API_KEY scoped to the Codex invocation only.
+name: Codex agent with Governor receipt
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  codex-agent:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # `--json` creates a machine-readable JSONL stream. Governor consumes
+      # only the turn.completed token usage record, never prompt or transcript items.
+      - name: Run Codex and save prompt-safe usage metadata
+        run: |
+          CODEX_API_KEY="${{ secrets.OPENAI_API_KEY }}" npx --yes @openai/codex exec --json --sandbox workspace-write --model gpt-5.6 "Review the pull request and make only the smallest safe improvements." \
+            | tee "$RUNNER_TEMP/codex.jsonl"
+
+      - name: Record the autonomous agent cost in Governor
+        uses: muzman123/Governor/.github/actions/governor-capture@main
+        with:
+          governor-url: https://governor-fawn.vercel.app
+          token: ${{ secrets.GOVERNOR_AGENT_TOKEN }}
+          session-file: ${{ runner.temp }}/codex.jsonl
+          model: gpt-5.6
+          branch: ${{ github.head_ref || github.ref_name }}
+          sha: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -1,6 +1,6 @@
 {
   "name": "@muzman123/governor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Connect Codex telemetry to Governor cost receipts.",
   "license": "MIT",
   "type": "module",

@@ -2,11 +2,20 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { estimateCost, resolveRate } from "./pricing";
 import type { GovernorStore } from "./store";
-import type { UsageEvent, UsageSource } from "./types";
+import type { AgentToken, UsageEvent, UsageSource } from "./types";
 
 export const ContextSchema = z.object({ sessionId:z.string().min(1), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/), branch:z.string().min(1), headSha:z.string().min(4), observedAt:z.string().datetime().optional() });
 export const UsageSchema = z.object({ eventKey:z.string().min(1).optional(), source:z.enum(["otel","session_file","manual"]).default("manual"), sessionId:z.string().min(1).optional(), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/).optional(), branch:z.string().optional(), headSha:z.string().optional(), model:z.string().min(1), inputTokens:z.coerce.number().int().nonnegative(), outputTokens:z.coerce.number().int().nonnegative(), cachedInputTokens:z.coerce.number().int().nonnegative().default(0), occurredAt:z.string().datetime().optional() });
 export type UsageInput = z.infer<typeof UsageSchema>;
+
+/** A direct Actions event is repository-scoped by its own agent credential, never a developer token. */
+export const AgentUsageSchema = z.object({
+  eventKey:z.string().min(1).optional(), sessionId:z.string().min(1).optional(), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/), branch:z.string().min(1), headSha:z.string().min(4),
+  model:z.string().min(1), inputTokens:z.coerce.number().int().nonnegative(), outputTokens:z.coerce.number().int().nonnegative(), cachedInputTokens:z.coerce.number().int().nonnegative().default(0), occurredAt:z.string().datetime().optional(),
+  workflowRunId:z.string().min(1).max(160), workflowRunUrl:z.string().url().refine((url)=>url.startsWith("https://"),"workflowRunUrl must use HTTPS"), workflowName:z.string().min(1).max(200), actorName:z.string().min(1).max(200).optional()
+});
+export type AgentUsageInput = z.infer<typeof AgentUsageSchema>;
+export const AgentFinalizeSchema=z.object({repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/),branch:z.string().min(1)});
 
 export async function ingestUsage(store: GovernorStore, developerId: string, input: UsageInput): Promise<{ inserted: boolean; event?: UsageEvent; pending?: boolean }> {
   const occurredAt = input.occurredAt ?? new Date().toISOString();
@@ -17,13 +26,25 @@ export async function ingestUsage(store: GovernorStore, developerId: string, inp
   if (!repository && !input.sessionId) throw new Error("Usage event needs a session context or repositorySlug");
   const rate = resolveRate(input.model, occurredAt, await store.getRates());
   const exact = Boolean(context && context.developerId === developerId);
+  const developer=await store.getDeveloperById(developerId);
   const event: UsageEvent = {
     id: crypto.randomUUID(), eventKey: input.eventKey ?? crypto.createHash("sha256").update(JSON.stringify([input.sessionId,input.model,input.inputTokens,input.outputTokens,input.cachedInputTokens,occurredAt])).digest("hex"), source: input.source as UsageSource,
-    sessionId: input.sessionId, repositoryId: repository?.id, developerId, branch: context?.branch ?? input.branch, headSha: context?.headSha ?? input.headSha, model: input.model,
+    sessionId: input.sessionId, repositoryId: repository?.id, developerId, actorType:"developer", actorName:developer?.githubLogin, branch: context?.branch ?? input.branch, headSha: context?.headSha ?? input.headSha, model: input.model,
     inputTokens: input.inputTokens, outputTokens: input.outputTokens, cachedInputTokens: input.cachedInputTokens, occurredAt, costUsd: estimateCost(input, rate), rateEffectiveFrom:rate.effectiveFrom,
     attributionMethod: exact ? "hook_context" : input.source === "session_file" ? "session_fallback" : "branch_inferred", attributionConfidence: exact ? 1 : input.source === "session_file" ? .8 : repository ? .6 : 0
   };
   return { ...(await store.ingestEvent(event)), event, pending:!repository };
+}
+
+export async function ingestAgentUsage(store: GovernorStore, agent: AgentToken, input: AgentUsageInput): Promise<{ inserted: boolean; event: UsageEvent }> {
+  const repository=await store.getRepositoryBySlug(input.repositorySlug);
+  if(!repository || repository.id!==agent.repositoryId) throw new Error("Agent token is not authorized for this repository");
+  const occurredAt=input.occurredAt ?? new Date().toISOString(); const rate=resolveRate(input.model,occurredAt,await store.getRates());
+  const event:UsageEvent={
+    id:crypto.randomUUID(),eventKey:input.eventKey ?? crypto.createHash("sha256").update(JSON.stringify([agent.id,input.workflowRunId,input.sessionId,input.model,input.inputTokens,input.outputTokens,input.cachedInputTokens,occurredAt])).digest("hex"),source:"github_actions",sessionId:input.sessionId,repositoryId:repository.id,
+    actorType:"agent",actorName:input.workflowName || agent.label,workflowRunId:input.workflowRunId,workflowRunUrl:input.workflowRunUrl,workflowName:input.workflowName,branch:input.branch,headSha:input.headSha,model:input.model,inputTokens:input.inputTokens,outputTokens:input.outputTokens,cachedInputTokens:input.cachedInputTokens,occurredAt,costUsd:estimateCost(input,rate),rateEffectiveFrom:rate.effectiveFrom,attributionMethod:"github_actions",attributionConfidence:1
+  };
+  const result=await store.ingestEvent(event); if(result.inserted) await store.markAgentTokenUsed(agent.id); return { ...result,event };
 }
 
 type OtelValue = { stringValue?: string; intValue?: string | number; doubleValue?: number; boolValue?: boolean; kvlistValue?: { values?: Array<{ key: string; value?: OtelValue }> } };

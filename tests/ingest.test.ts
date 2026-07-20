@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ingestUsage, normalizeOtlpLogs } from "../lib/ingest";
+import { ingestAgentUsage, ingestUsage, normalizeOtlpLogs } from "../lib/ingest";
 import { MemoryGovernorStore } from "../lib/store";
 
 test("hook context produces exact attribution and ingestion is idempotent",async()=>{
@@ -30,6 +30,16 @@ test("usage arriving before its signed context is held and attached",async()=>{
   assert.equal(events.find((event)=>event.eventKey==="early-usage")?.attributionMethod,"hook_context");
   const verification=await store.getVerificationSessions(developer.id,"2026-07-17T09:59:00.000Z");
   assert.equal(verification[0]?.eventCount,1);
+});
+
+test("repository-scoped agent tokens create exact Actions attribution and cannot cross repositories",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo);
+  const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"}); const token=await store.issueAgentToken({repositoryId:repo.id,label:"GitHub Actions",createdByDeveloperId:developer.id,token:"agent-token"});
+  const input={eventKey:"agent-event",repositorySlug:repo.slug,branch:"feature/agent",headSha:"abc1234",workflowRunId:"123",workflowRunUrl:"https://github.com/acme/checkout/actions/runs/123",workflowName:"Codex review",model:"gpt-5.6",inputTokens:1_000,outputTokens:10,cachedInputTokens:100,occurredAt:"2026-07-18T10:00:00.000Z"};
+  const result=await ingestAgentUsage(store,token,input);
+  assert.equal(result.inserted,true); assert.equal(result.event.actorType,"agent"); assert.equal(result.event.source,"github_actions"); assert.equal(result.event.attributionMethod,"github_actions"); assert.equal(result.event.attributionConfidence,1); assert.equal(result.event.developerId,undefined);
+  await store.upsertRepository({id:"repo_other",slug:"acme/other",defaultBranch:"main"});
+  await assert.rejects(()=>ingestAgentUsage(store,token,{...input,eventKey:"agent-wrong-repo",repositorySlug:"acme/other"}),/not authorized/);
 });
 
 test("normalizes current Codex OTLP token-count attributes",()=>{

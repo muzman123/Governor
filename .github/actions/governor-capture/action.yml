@@ -1,0 +1,49 @@
+name: Governor agent cost capture
+description: Upload prompt-safe Codex exec JSONL usage with deterministic GitHub Actions context.
+inputs:
+  governor-url:
+    description: Public Governor deployment URL.
+    required: true
+  token:
+    description: Repository-scoped Governor agent token. Store this as a GitHub Actions secret.
+    required: true
+  session-file:
+    description: JSONL emitted by codex exec --json.
+    required: true
+  model:
+    description: Model passed to Codex for this run. Governor requires it because documented turn.completed usage does not always contain a model field.
+    required: true
+  branch:
+    description: Source branch associated with the Codex run.
+    required: true
+  sha:
+    description: Source commit SHA associated with the Codex run.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Capture prompt-safe usage metadata
+      shell: bash
+      env:
+        GOVERNOR_URL: ${{ inputs.governor-url }}
+        GOVERNOR_AGENT_TOKEN: ${{ inputs.token }}
+        GOVERNOR_CAPTURE_FILE: ${{ inputs.session-file }}
+        GOVERNOR_CAPTURE_MODEL: ${{ inputs.model }}
+        GOVERNOR_CAPTURE_BRANCH: ${{ inputs.branch }}
+        GOVERNOR_CAPTURE_SHA: ${{ inputs.sha }}
+      run: |
+        set -euo pipefail
+        if [[ ! -f "$GOVERNOR_CAPTURE_FILE" ]]; then
+          echo "::error::Governor could not find the Codex JSONL file: $GOVERNOR_CAPTURE_FILE"
+          exit 1
+        fi
+        npx --yes @muzman123/governor@latest capture \
+          --file "$GOVERNOR_CAPTURE_FILE" \
+          --repository "$GITHUB_REPOSITORY" \
+          --branch "$GOVERNOR_CAPTURE_BRANCH" \
+          --sha "$GOVERNOR_CAPTURE_SHA" \
+          --model "$GOVERNOR_CAPTURE_MODEL" \
+          --workflow-run-id "$GITHUB_RUN_ID" \
+          --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+          --workflow-name "$GITHUB_WORKFLOW" \
+          --actor-name "$GITHUB_ACTOR"
