@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const previewRepositories = [
   { name: "acme/checkout", spend: "$284.70", state: "2 observations" },
@@ -7,16 +8,16 @@ const previewRepositories = [
 ];
 
 const previewModels = [
-  { model: "gpt-5.5", share: "62%", cost: "$2.99" },
-  { model: "gpt-5.4-mini", share: "28%", cost: "$1.35" },
-  { model: "gpt-5.6-luna", share: "10%", cost: "$0.48" },
+  { model: "gpt-5.5", width: 74, cost: "$2.99" },
+  { model: "gpt-5.4-mini", width: 45, cost: "$1.35" },
+  { model: "gpt-5.6-luna", width: 23, cost: "$0.48" },
 ];
 
 export default function Home() {
   return <main className="landing-shell">
     <nav className="landing-nav">
       <Link className="wordmark" href="/">governor<span>.</span></Link>
-      <Link className="button small-button" href="/api/auth/github/start">Connect GitHub</Link>
+      <div><ThemeToggle/><Link className="button small-button" href="/api/auth/github/start">Connect GitHub</Link></div>
     </nav>
 
     <section className="hero">
@@ -35,9 +36,9 @@ export default function Home() {
         <div>
           <div className="eyebrow">The decision path, in one place</div>
           <h2 id="preview-heading">From portfolio signal to pull request evidence.</h2>
-          <p>A quick illustrative view of the context Governor gives an engineering lead. Dollar amounts below are sample token-rate estimates.</p>
+          <p>A compact view of the context Governor gives an engineering lead: portfolio signal first, with the receipt trail close at hand.</p>
         </div>
-        <span className="sample-label">Illustrative product view</span>
+        <span className="preview-label">Dashboard preview</span>
       </header>
 
       <div className="landing-preview-frame">
@@ -74,9 +75,9 @@ export default function Home() {
               <div className="preview-receipt-total"><div><span>Estimated Codex cost</span><strong>$4.82</strong></div><small>18 usage events</small></div>
               <p>Changes payment-retry behavior and protects the edge case with tests. Raw comments and file contents are not stored.</p>
               <div className="preview-models">
-                {previewModels.map((model) => <div key={model.model}><span>{model.model}</span><i style={{ width: model.share }}/><strong>{model.cost}</strong></div>)}
+                {previewModels.map((model) => <div key={model.model}><span>{model.model}</span><i style={{ width: `${model.width}%` }}/><strong>{model.cost}</strong></div>)}
               </div>
-              <span className="preview-receipt-note">Transparent token-rate estimate, not an invoice total.</span>
+              <span className="preview-receipt-note">Recorded token-rate estimate with a clear calculation trail.</span>
             </section>
 
             <section className="preview-observation">
@@ -84,7 +85,7 @@ export default function Home() {
               <div>
                 <div className="eyebrow">Governor observation</div>
                 <h3>Low cache reuse increased estimated cost.</h3>
-                <p>Cache utilization was 12% versus this repository&apos;s 64% baseline; about $3.10 of this receipt was reprocessed context.</p>
+                <p>Cache reuse was below this repository&apos;s baseline; about $3.10 of this receipt was reprocessed context.</p>
                 <div className="preview-observation-evidence">Evidence: 38 comparable usage events + deterministic calculation</div>
                 <strong>Estimated impact <span>$3.10</span></strong>
               </div>
