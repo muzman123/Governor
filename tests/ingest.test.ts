@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ingestAgentUsage, ingestUsage, normalizeOtlpLogs } from "../lib/ingest";
 import { MemoryGovernorStore } from "../lib/store";
+import { handleGitHubWebhook, refreshPullRequestReceiptsForBranch, refreshPullRequestReceiptsForUsageEvents } from "../lib/webhooks";
 
 test("hook context produces exact attribution and ingestion is idempotent",async()=>{
   const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo);
@@ -30,6 +31,30 @@ test("usage arriving before its signed context is held and attached",async()=>{
   assert.equal(events.find((event)=>event.eventKey==="early-usage")?.attributionMethod,"hook_context");
   const verification=await store.getVerificationSessions(developer.id,"2026-07-17T09:59:00.000Z");
   assert.equal(verification[0]?.eventCount,1);
+});
+
+test("attributed developer usage refreshes an already-open PR receipt",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo);
+  await handleGitHubWebhook(store,"pull_request",{action:"opened",installation:{id:1},repository:{id:99,full_name:repo.slug,default_branch:"main"},number:501,pull_request:{head:{ref:"feature/live-refresh",sha:"a1b2c3d"},title:"Add live receipt refresh",state:"open"}});
+  assert.equal((await store.getReceipt(repo.id,501))?.eventCount,0);
+  const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
+  await store.saveContext({sessionId:"live-refresh",repositorySlug:repo.slug,branch:"feature/live-refresh",headSha:"a1b2c3d",developerId:developer.id,observedAt:"2026-07-20T10:00:00.000Z"});
+  const result=await ingestUsage(store,developer.id,{eventKey:"live-refresh-event",source:"otel",sessionId:"live-refresh",model:"gpt-5.6",inputTokens:1_200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:01:00.000Z"});
+  assert.equal(result.inserted,true); assert.ok(result.event?.repositoryId);
+  assert.deepEqual(await refreshPullRequestReceiptsForUsageEvents(store,result.event?[result.event]:[]),{refreshed:1,failed:0});
+  const receipt=await store.getReceipt(repo.id,501); assert.equal(receipt?.eventCount,1); assert.ok((receipt?.totalCost ?? 0)>0);
+});
+
+test("late session context refreshes a receipt after it attaches pending usage",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo);
+  await handleGitHubWebhook(store,"pull_request",{action:"opened",installation:{id:1},repository:{id:99,full_name:repo.slug,default_branch:"main"},number:502,pull_request:{head:{ref:"feature/late-context",sha:"d4e5f6a"},title:"Attach late session context",state:"open"}});
+  const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
+  const result=await ingestUsage(store,developer.id,{eventKey:"late-context-event",source:"otel",sessionId:"late-context",model:"gpt-5.6",inputTokens:1_200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:01:00.000Z"});
+  assert.equal(result.pending,true);
+  const context={sessionId:"late-context",repositorySlug:repo.slug,branch:"feature/late-context",headSha:"d4e5f6a",developerId:developer.id,observedAt:"2026-07-20T10:02:00.000Z"};
+  await store.saveContext(context); assert.equal(await store.attachPendingEvents(context,repo.id),1);
+  assert.equal((await refreshPullRequestReceiptsForBranch(store,repo,context.branch)).length,1);
+  const receipt=await store.getReceipt(repo.id,502); assert.equal(receipt?.eventCount,1); assert.ok((receipt?.totalCost ?? 0)>0);
 });
 
 test("repository-scoped agent tokens create exact Actions attribution and cannot cross repositories",async()=>{

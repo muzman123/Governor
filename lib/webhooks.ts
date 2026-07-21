@@ -5,7 +5,7 @@ import { buildReceipt } from "./receipts";
 import { observeReceipt } from "./observations";
 import { createWorkContext, prepareWorkContextInput } from "./work-context";
 import type { GovernorStore } from "./store";
-import type { PullRequest, Repository } from "./types";
+import type { PullRequest, Repository, UsageEvent } from "./types";
 
 type GitHubPayload = Record<string, any>;
 const id = (prefix: string, value: string | number) => `${prefix}_${String(value)}`;
@@ -50,6 +50,27 @@ export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repo
   await store.saveReceipt(receipt);
   pr.commentId=await publishPullRequestReceipt(repo,pr,receipt); await store.upsertPullRequest(pr);
   return receipt;
+}
+
+/** Refreshes every known PR receipt for one attributed branch. */
+export async function refreshPullRequestReceiptsForBranch(store: GovernorStore, repo: Repository, branch: string) {
+  const prs=await store.getPullRequestsByBranch(repo.id,branch);
+  return Promise.all(prs.map((pr)=>refreshPullRequestReceipt(store,repo,pr)));
+}
+
+/**
+ * OTel records can arrive after a PR was opened. Refresh each affected branch
+ * once per intake batch so the stored receipt/dashboard does not stay stale.
+ */
+export async function refreshPullRequestReceiptsForUsageEvents(store: GovernorStore, events: UsageEvent[]) {
+  const repositories=new Map((await store.listRepositories()).map((repo)=>[repo.id,repo]));
+  const targets=new Map<string,{repo:Repository;branch:string}>();
+  for(const event of events) {
+    if(!event.repositoryId || !event.branch) continue;
+    const repo=repositories.get(event.repositoryId); if(repo) targets.set(`${repo.id}:${event.branch}`,{repo,branch:event.branch});
+  }
+  const settled=await Promise.allSettled([...targets.values()].map(({repo,branch})=>refreshPullRequestReceiptsForBranch(store,repo,branch)));
+  return {refreshed:settled.filter((result)=>result.status === "fulfilled").reduce((count,result)=>count+(result.status === "fulfilled" ? result.value.length : 0),0),failed:settled.filter((result)=>result.status === "rejected").length};
 }
 
 export function signingState(returnTo = "/"): string { const secret=process.env.GITHUB_OAUTH_STATE_SECRET ?? process.env.GITHUB_WEBHOOK_SECRET ?? "development-only"; const payload=Buffer.from(JSON.stringify({returnTo,nonce:crypto.randomUUID(),expires:Date.now()+10*60_000})).toString("base64url"); const signature=crypto.createHmac("sha256",secret).update(payload).digest("base64url"); return `${payload}.${signature}`; }
