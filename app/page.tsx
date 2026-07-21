@@ -1,16 +1,33 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-const previewRepositories = [
-  { name: "acme/checkout", spend: "$284.70", state: "2 observations" },
-  { name: "acme/mobile-api", spend: "$163.28", state: "Telemetry flowing" },
-  { name: "acme/design-system", spend: "$78.94", state: "3 recent receipts" },
+const previewMetrics = [
+  { label: "7-day estimate", value: "$89.30" },
+  { label: "30-day estimate", value: "$526.92" },
+  { label: "Active repositories", value: "3" },
+  { label: "PR receipts", value: "14" },
+];
+
+const previewSpend = [
+  { date: "Jun 10", cost: "$8.10", height: 34 },
+  { date: "Jun 11", cost: "$14.40", height: 58 },
+  { date: "Jun 12", cost: "$9.60", height: 41 },
+  { date: "Jun 13", cost: "$18.40", height: 77 },
+  { date: "Jun 14", cost: "$12.20", height: 51 },
+  { date: "Jun 15", cost: "$15.90", height: 66 },
+  { date: "Jun 16", cost: "$10.70", height: 45 },
 ];
 
 const previewModels = [
   { model: "gpt-5.5", width: 74, cost: "$2.99" },
   { model: "gpt-5.4-mini", width: 45, cost: "$1.35" },
   { model: "gpt-5.6-luna", width: 23, cost: "$0.48" },
+];
+
+const previewReceipts = [
+  { repo: "acme/checkout", number: "#412", title: "Reduce checkout retries", cost: "$4.82", events: "18 usage events" },
+  { repo: "acme/mobile-api", number: "#188", title: "Add request tracing", cost: "$3.41", events: "11 usage events" },
+  { repo: "acme/design-system", number: "#74", title: "Tighten button states", cost: "$1.96", events: "7 usage events" },
 ];
 
 export default function Home() {
@@ -34,63 +51,47 @@ export default function Home() {
     <section className="landing-preview" id="product-preview" aria-labelledby="preview-heading">
       <header className="landing-preview-header">
         <div>
-          <div className="eyebrow">The decision path, in one place</div>
-          <h2 id="preview-heading">From portfolio signal to pull request evidence.</h2>
-          <p>A compact view of the context Governor gives an engineering lead: portfolio signal first, with the receipt trail close at hand.</p>
+          <div className="eyebrow">Portfolio overview</div>
+          <h2 id="preview-heading">Spend, receipts, and model mix.</h2>
+          <p>A live view of connected repository work.</p>
         </div>
         <span className="preview-label">Dashboard preview</span>
       </header>
 
       <div className="landing-preview-frame">
-        <aside className="preview-portfolio">
-          <div className="preview-section-heading">
-            <span>Portfolio</span>
-            <small>30-day estimate</small>
-          </div>
-          <strong className="preview-portfolio-total">$526.92</strong>
-          <div className="preview-repositories">
-            {previewRepositories.map((repository, index) => <div className={`preview-repository ${index === 0 ? "selected" : ""}`} key={repository.name}>
-              <div><strong>{repository.name}</strong><small>{repository.state}</small></div>
-              <span>{repository.spend}</span>
-            </div>)}
-          </div>
-        </aside>
-
-        <div className="preview-repository-view">
-          <div className="preview-repository-header">
-            <div><div className="eyebrow">Repository</div><h3>acme/checkout</h3><span>Default branch: main</span></div>
-            <span className="preview-live"><i/> Recent telemetry</span>
+        <div className="preview-dashboard">
+          <div className="preview-dashboard-header">
+            <div><div className="eyebrow">Overview</div><h3>Overview</h3></div>
+            <span className="preview-live"><i/> Telemetry flowing</span>
           </div>
 
           <div className="preview-metrics">
-            <div><span>7-day estimated spend</span><strong>$89.30</strong></div>
-            <div><span>PR receipts</span><strong>14</strong></div>
-            <div><span>Merged this month</span><strong>9</strong></div>
+            {previewMetrics.map((metric) => <div key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong></div>)}
           </div>
 
-          <div className="preview-detail-grid">
-            <section className="preview-receipt">
-              <div className="preview-section-heading"><span>Pull request receipt</span><small>Merged</small></div>
-              <h3>#412 Reduce checkout retries</h3>
-              <div className="preview-receipt-total"><div><span>Estimated Codex cost</span><strong>$4.82</strong></div><small>18 usage events</small></div>
-              <p>Changes payment-retry behavior and protects the edge case with tests. Raw comments and file contents are not stored.</p>
+          <div className="preview-overview-grid">
+            <section className="preview-panel preview-trend-panel">
+              <div className="preview-panel-heading"><div><div className="eyebrow">Spend trend / last 14 days</div><h3>Estimated Codex spend</h3></div><span>Daily total</span></div>
+              <div className="preview-chart">
+                {previewSpend.map((point) => <div className="preview-chart-column" key={point.date}><strong>{point.cost}</strong><i style={{ height: `${point.height}px` }}/><small>{point.date}</small></div>)}
+              </div>
+            </section>
+
+            <section className="preview-panel preview-model-panel">
+              <div className="preview-panel-heading"><div><div className="eyebrow">Model mix</div><h3>Where spend came from</h3></div></div>
               <div className="preview-models">
-                {previewModels.map((model) => <div key={model.model}><span>{model.model}</span><i style={{ width: `${model.width}%` }}/><strong>{model.cost}</strong></div>)}
-              </div>
-              <span className="preview-receipt-note">Recorded token-rate estimate with a clear calculation trail.</span>
-            </section>
-
-            <section className="preview-observation">
-              <div className="observation-icon">i</div>
-              <div>
-                <div className="eyebrow">Governor observation</div>
-                <h3>Low cache reuse increased estimated cost.</h3>
-                <p>Cache reuse was below this repository&apos;s baseline; about $3.10 of this receipt was reprocessed context.</p>
-                <div className="preview-observation-evidence">Evidence: 38 comparable usage events + deterministic calculation</div>
-                <strong>Estimated impact <span>$3.10</span></strong>
+                {previewModels.map((model) => <div key={model.model}><div><span>{model.model}</span><strong>{model.cost}</strong></div><i style={{ width: `${model.width}%` }}/></div>)}
               </div>
             </section>
           </div>
+
+          <section className="preview-panel preview-receipts-panel">
+            <div className="preview-panel-heading"><div><div className="eyebrow">Recent pull request receipts</div><h3>Receipts attached to repository work</h3></div><span className="preview-link">View repositories <b aria-hidden="true">→</b></span></div>
+            <div className="preview-receipts-list">
+              {previewReceipts.map((receipt) => <div className="preview-receipt-row" key={`${receipt.repo}-${receipt.number}`}><div><strong>{receipt.repo} <span>{receipt.number}</span></strong><small>{receipt.title}</small></div><div><strong>{receipt.cost}</strong><small>{receipt.events}</small></div><b aria-hidden="true">→</b></div>)}
+            </div>
+            <small className="preview-note">Calculations are derived from recorded token usage and effective rates.</small>
+          </section>
         </div>
       </div>
     </section>

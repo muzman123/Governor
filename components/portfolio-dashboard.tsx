@@ -15,11 +15,11 @@ export function PortfolioDashboard({ items }: { items: RepositoryOverview[] }) {
   const models = mergeModelSpend(items);
 
   if (!items.length) {
-    return <><PageHeader eyebrow="Portfolio / engineering spend" title="Spend, logged as work." description="Connect a repository to see Codex spend in the context of pull requests." action={<Link className="button button-primary" href="/app/setup">Connect repository</Link>} /><EmptyState /></>;
+    return <><PageHeader eyebrow="Overview" title="Overview" action={<Link className="button button-primary" href="/app/setup">Connect repository</Link>} /><EmptyState /></>;
   }
 
   return <>
-    <PageHeader eyebrow="Portfolio / engineering spend" title="Spend, logged as work." description="A calm ledger for the engineering work your team already ships." action={<div className="header-actions"><AutoRefresh/><Link className="button button-primary" href="/app/setup">Connect repository</Link></div>} />
+    <PageHeader eyebrow="Overview" title="Overview" action={<div className="header-actions"><AutoRefresh/><Link className="button button-primary" href="/app/setup">Connect repository</Link></div>} />
 
     <section className="metrics-grid portfolio-metrics">
       <MetricCard label="7-day estimate" value={money(spend7)} />
