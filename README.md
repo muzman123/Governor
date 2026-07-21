@@ -1,6 +1,28 @@
 # Governor
 
-Governor puts transparent **estimated Codex cost receipts** on GitHub pushes and pull requests. It tracks both developer Codex work and autonomous Codex work run in GitHub Actions, always against a repository, branch, commit, and PR. It does not inspect prompts or generated code, write repository contents, estimate other vendors' costs, or claim invoice-level billing accuracy.
+Governor puts transparent **Codex cost receipts** on GitHub pushes and pull requests. It tracks both developer Codex work and autonomous Codex work run in GitHub Actions, always against a repository, branch, commit, and PR. It does not inspect prompts or generated code, write repository contents, estimate other vendors' costs, or claim invoice-level billing accuracy.
+
+## Quick start
+
+**Requires:** Node 20+, Codex installed, and a git repo with an `origin` remote and at least one commit.
+
+1. Install the public Governor GitHub App on a repo you own: https://github.com/apps/governor-app-mvp-demo
+2. Sign in to Governor (https://governor-fawn.vercel.app), connect GitHub to Governor, and open Setup to get your one-time connect command. It should look something like:
+
+   ```bash
+   npx --yes @muzman123/governor@latest connect --url https://governor-fawn.vercel.app --token gov_<your-token>
+   ```
+
+3. Run it in your terminal.
+4. Fully restart Codex so the config loads.
+5. Run a real Codex task in that repo.
+6. Watch Setup flip to verified.
+
+**To test:**
+
+- Use Codex normally to push commits to branches; leave comprehensive commit messages.
+- PR the branch to main/master with a short or comprehensive PR message, and watch the automated receipt comment populate with the work and AI-usage summary.
+- Visit the overview page for total AI usage through Codex, then visit the repository dashboard to see the breakdown of exact token spend within the repo.
 
 ## What works
 
@@ -70,11 +92,3 @@ The action reads only the `turn.completed` token-count record emitted by `codex 
 ## Production deployment
 
 Deploy the Next.js app to Vercel, Railway, or Render, use Supabase/Postgres for `DATABASE_URL`, then run `npm run db:init` to apply [`db/schema.sql`](db/schema.sql), seed effective-dated rates, and create the public demo tenant. This release adds migration-safe columns/tables for agent tokens, actor attribution, and PR outcomes, so apply `db:init` once after deployment. Set `GOVERNOR_URL` to the public deployment URL and add a random `GOVERNOR_SESSION_SECRET` (at least 32 random bytes) to encrypt GitHub OAuth tokens held server-side. Configure the OTLP receiver at `/v1/logs` for JSON OTLP traffic, then point the GitHub App and OAuth callback to the same public host. Existing users must sign in again after deployment so Governor can request the repository-read OAuth scope required by the workspace.
-
-## How Codex and GPT-5.6 were used
-
-Codex accelerated the architecture, TypeScript implementation, test design, data schema, CLI workflow, GitHub App integration, agent-ingestion flow, and demo surface. Product decisions remained human-led: Governor prioritizes transparent, prompt-safe cost attribution over broad but weak vendor coverage, avoids prompt/code collection, and never writes to repository contents. GPT-5.6 is used in-product only for a bounded receipt explanation and factual Work context summary generated from calculated receipt facts plus transient PR metadata/discussion; pricing, attribution, actor classification, outcome metrics, and file-category counts remain deterministic code.
-
-## Judge test path
-
-Use the hosted public sandbox to inspect aggregate receipts without an account. For a live developer test, install the App on a disposable repository, obtain a telemetry token through OAuth, run `governor connect`, work with Codex on a branch, then push/open a PR. For an autonomous-agent test, generate the repository-scoped agent token, add the sample workflow, and trigger it from a trusted pull request. The PR receipt, Check Run, and dashboard update without a rebuild.
