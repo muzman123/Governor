@@ -11,23 +11,28 @@ const percentage = (value: number) => `${Math.round(value*100)}%`;
 /** Produces evidence-backed findings. GPT may explain these fields, but cannot alter them. */
 export function observeReceipt(receipt: Receipt, receiptEvents: UsageEvent[], historicalEvents: UsageEvent[], historicalReceipts: Receipt[]): ReceiptObservation | undefined {
   const generatedAt=new Date().toISOString();
-  const base={confidence:receipt.confidence,calculationVersion:"v1",generatedAt};
-  if(receipt.confidence<.95) return { ...base,category:"attribution_quality",title:"Attribution needs a second look",explanation:`This receipt is ${percentage(receipt.confidence)} attributed rather than exact, so Governor is presenting it as an estimate with lower context certainty.`,evidence:`Attribution confidence: ${percentage(receipt.confidence)}.`,impactUsd:undefined };
+  const base={confidence:receipt.confidence,calculationVersion:"v2",generatedAt};
+  if(receipt.confidence<.95) return { ...base,severity:"info",category:"attribution_quality",title:"Attribution needs a second look",explanation:`This receipt is ${percentage(receipt.confidence)} attributed rather than exact, so Governor is presenting it as an estimate with lower context certainty.`,evidence:`Attribution confidence: ${percentage(receipt.confidence)}.`,impactUsd:undefined };
+
+  const candidates=historicalReceipts.filter((candidate)=>candidate.prNumber!==receipt.prNumber && candidate.eventCount>0);
+  const sameWorkType=receipt.workType === "unclassified" ? [] : candidates.filter((candidate)=>(candidate.workType ?? "unclassified")===receipt.workType);
+  const comparable=sameWorkType.length>=5 ? sameWorkType : candidates;
+  if(comparable.length>=5) {
+    const baseline=median(comparable.map((candidate)=>candidate.totalCost)); const delta=receipt.totalCost-baseline; const multiplier=baseline>0 ? receipt.totalCost/baseline : 0;
+    if(baseline>0 && multiplier>=2 && delta>=.1) {
+      const scope=sameWorkType.length>=5 ? "work_type" as const : "repository" as const;
+      return { ...base,severity:"warning",category:"cost_outlier",title:"This PR is above its usual cost",explanation:`This receipt is ${multiplier.toFixed(1)}× the usual estimate for ${scope === "work_type" ? "similar work" : "this repository"}.`,evidence:`This PR: ${money(receipt.totalCost)}; median of ${comparable.length} ${scope === "work_type" ? "similar" : "repository"} PRs: ${money(baseline)}.`,impactUsd:Math.round(delta*1_000_000)/1_000_000,comparison:{currentCostUsd:receipt.totalCost,baselineCostUsd:Math.round(baseline*1_000_000)/1_000_000,deltaUsd:Math.round(delta*1_000_000)/1_000_000,multiplier:Math.round(multiplier*100)/100,sampleSize:comparable.length,scope,workType:scope === "work_type" ? receipt.workType : undefined} };
+    }
+  }
 
   const currentCache=ratio(receiptEvents); const historicalCache=ratio(historicalEvents);
   if(historicalEvents.length>=20 && historicalCache>=.2 && currentCache<historicalCache*.55) {
     const impact=Math.max(0,receipt.totalCost*(historicalCache-currentCache));
-    return { ...base,category:"cache_efficiency",title:"Lower cache reuse increased this estimate",explanation:`Cache utilization was ${percentage(currentCache)} versus this repository's ${percentage(historicalCache)} baseline, indicating more context was reprocessed than usual.`,evidence:`Cache utilization: ${percentage(currentCache)}; repository baseline: ${percentage(historicalCache)} across ${historicalEvents.length} historical events.`,impactUsd:Math.round(impact*1_000_000)/1_000_000 };
-  }
-
-  const comparable=historicalReceipts.filter((candidate)=>candidate.prNumber!==receipt.prNumber && candidate.eventCount>0).map((candidate)=>candidate.totalCost);
-  if(comparable.length>=3) {
-    const baseline=median(comparable);
-    if(baseline>0 && receipt.totalCost>baseline*1.5) return { ...base,category:"cost_outlier",title:"This PR is above the repository's usual cost",explanation:`This receipt is ${Math.round(receipt.totalCost/baseline*100)}% of the typical comparable PR estimate for this repository.`,evidence:`This receipt: ${money(receipt.totalCost)}; median of ${comparable.length} comparable PRs: ${money(baseline)}.`,impactUsd:Math.round((receipt.totalCost-baseline)*1_000_000)/1_000_000 };
+    return { ...base,severity:"info",category:"cache_efficiency",title:"Lower cache reuse increased this estimate",explanation:`Cache utilization was ${percentage(currentCache)} versus this repository's ${percentage(historicalCache)} baseline, indicating more context was reprocessed than usual.`,evidence:`Cache utilization: ${percentage(currentCache)}; repository baseline: ${percentage(historicalCache)} across ${historicalEvents.length} historical events.`,impactUsd:Math.round(impact*1_000_000)/1_000_000 };
   }
 
   const largest=receipt.models[0];
-  if(largest && receipt.totalCost>0 && largest.costUsd/receipt.totalCost>=.8 && receipt.models.length>1) return { ...base,category:"model_mix",title:"One model drove most of this receipt",explanation:`${largest.model} accounts for ${percentage(largest.costUsd/receipt.totalCost)} of this estimate, so it is the clearest place to inspect if this work needs cost tuning.`,evidence:`${largest.model}: ${money(largest.costUsd)} of ${money(receipt.totalCost)} estimated cost.` };
+  if(largest && receipt.totalCost>0 && largest.costUsd/receipt.totalCost>=.8 && receipt.models.length>1) return { ...base,severity:"info",category:"model_mix",title:"One model drove most of this receipt",explanation:`${largest.model} accounts for ${percentage(largest.costUsd/receipt.totalCost)} of this estimate, so it is the clearest place to inspect if this work needs cost tuning.`,evidence:`${largest.model}: ${money(largest.costUsd)} of ${money(receipt.totalCost)} estimated cost.` };
   return undefined;
 }
 

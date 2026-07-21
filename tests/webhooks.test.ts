@@ -28,3 +28,10 @@ test("PR close stores a merged or closed-unmerged outcome on the receipt",async(
   assert.equal(pr?.outcome,"merged"); assert.equal(receipt?.outcome,"merged"); assert.equal(receipt?.actors.find((actor)=>actor.actorType==="agent")?.label,"Autonomous agent"); assert.equal(dashboard.metrics.outcomes.mergedCount,1); assert.ok((dashboard.metrics.outcomes.costPerMergedPr ?? 0)>0);
   const unmergedStore=new MemoryGovernorStore(); const unmergedPayload={...payload,number:413,pull_request:{...payload.pull_request,title:"Experiment that did not merge",merged:false,merged_at:null}}; await handleGitHubWebhook(unmergedStore,"pull_request",unmergedPayload); const unmergedRepo=await unmergedStore.getRepositoryBySlug("acme/checkout"); assert.ok(unmergedRepo); const unmerged=await unmergedStore.getReceipt(unmergedRepo.id,413); assert.equal(unmerged?.outcome,"closed_unmerged");
 });
+
+test("PR labels are stored as a deterministic work type and refresh on label changes",async()=>{
+  const store=new MemoryGovernorStore(); const base={installation:{id:1},repository:{id:99,full_name:"acme/checkout",default_branch:"main"},number:414,pull_request:{head:{ref:"fix/cart-race",sha:"4b46ac"},title:"Labelled work",state:"open",labels:[{name:"feature"}]}};
+  await handleGitHubWebhook(store,"pull_request",{...base,action:"opened"}); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo); assert.equal((await store.getPullRequest(repo.id,414))?.workType,"feature");
+  await handleGitHubWebhook(store,"pull_request",{...base,action:"labeled",pull_request:{...base.pull_request,labels:[{name:"security"},{name:"feature"}]}}); const receipt=await store.getReceipt(repo.id,414);
+  assert.equal((await store.getPullRequest(repo.id,414))?.workType,"security"); assert.equal(receipt?.workType,"security");
+});

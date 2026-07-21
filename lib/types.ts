@@ -2,6 +2,7 @@ export type ActorType = "developer" | "agent";
 export type AttributionMethod = "hook_context" | "session_fallback" | "branch_inferred" | "github_actions";
 export type UsageSource = "otel" | "session_file" | "manual" | "github_actions";
 export type PullRequestOutcome = "open" | "merged" | "closed_unmerged";
+export type WorkType = "feature" | "bug_fix" | "security" | "maintenance" | "unclassified";
 
 export type Repository = { id: string; slug: string; installationId?: number; defaultBranch: string };
 export type Developer = { id: string; githubLogin: string; email?: string; tokenHash: string };
@@ -19,7 +20,7 @@ export type UsageEvent = {
 
 export type PullRequest = {
   id: string; repositoryId: string; number: number; branch: string; headSha: string; title: string; state: "open" | "closed";
-  outcome: PullRequestOutcome; commentId?: number; mergedAt?: string; closedAt?: string; updatedAt: string;
+  outcome: PullRequestOutcome; workType: WorkType; commentId?: number; mergedAt?: string; closedAt?: string; updatedAt: string;
 };
 
 export type ModelBreakdown = { model: string; inputTokens: number; outputTokens: number; cachedInputTokens: number; costUsd: number };
@@ -47,12 +48,18 @@ export type WorkContext = {
   sources: WorkContextSource[]; headSha: string; fingerprint: string; generatedAt: string;
 };
 export type ObservationCategory = "cache_efficiency" | "cost_outlier" | "model_mix" | "attribution_quality";
-export type ReceiptObservation = { category: ObservationCategory; title: string; explanation: string; evidence: string; impactUsd?: number; confidence: number; calculationVersion: string; generatedAt: string };
+export type ObservationComparison = { currentCostUsd: number; baselineCostUsd: number; deltaUsd: number; multiplier: number; sampleSize: number; scope: "work_type" | "repository"; workType?: WorkType };
+export type ReceiptObservation = { category: ObservationCategory; title: string; explanation: string; evidence: string; impactUsd?: number; confidence: number; calculationVersion: string; generatedAt: string; severity: "info" | "warning"; comparison?: ObservationComparison };
 export type Receipt = {
   repositoryId: string; prNumber: number; title: string; headSha: string; totalCost: number; confidence: number; eventCount: number;
-  models: ModelBreakdown[]; actors: ActorBreakdown[]; outcome?: PullRequestOutcome; outcomeAt?: string;
+  models: ModelBreakdown[]; actors: ActorBreakdown[]; workType: WorkType; outcome?: PullRequestOutcome; outcomeAt?: string;
   explanation?: string; observation?: ReceiptObservation; workContext?: WorkContext; updatedAt: string;
 };
+
+export type RepositoryBudget = { repositoryId: string; monthlyBudgetUsd: number; updatedByDeveloperId: string; updatedAt: string };
+export type BudgetForecastStatus = "not_configured" | "early_estimate" | "on_track" | "watch" | "projected_over" | "over_budget";
+export type BudgetForecast = { monthStart: string; monthEnd: string; timezone: "UTC"; spendMonthToDate: number; dailyRunRate: number; projectedSpend: number; budgetUsd?: number; remainingBudgetUsd?: number; burnPercent?: number; daysElapsed: number; daysInMonth: number; status: BudgetForecastStatus };
+export type WorkTypeSpend = { workType: WorkType; totalCost: number; prCount: number; avgCostPerPr: number; mergedCount: number };
 
 export type OutcomeMetrics = {
   openCount: number; mergedCount: number; closedUnmergedCount: number;
@@ -70,4 +77,5 @@ export type SpendPoint = { date: string; costUsd: number };
 export type RepositoryOverview = Dashboard & {
   modelSpend: ModelBreakdown[]; actorSpend: ActorBreakdown[]; spendTrend: SpendPoint[]; recentEvents: UsageEvent[];
   lastActivityAt?: string; telemetryHealthy: boolean; agentTokenConfigured: boolean;
+  budget?: RepositoryBudget; budgetForecast: BudgetForecast; workTypeSpend: WorkTypeSpend[];
 };

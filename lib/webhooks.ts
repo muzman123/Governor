@@ -4,6 +4,7 @@ import { fetchPullRequestWorkContext, publishCommitCheck, publishPullRequestRece
 import { buildReceipt } from "./receipts";
 import { observeReceipt } from "./observations";
 import { createWorkContext, prepareWorkContextInput } from "./work-context";
+import { deriveWorkType } from "./work-types";
 import type { GovernorStore } from "./store";
 import type { PullRequest, Repository, UsageEvent } from "./types";
 
@@ -17,7 +18,7 @@ async function repositoryForPayload(store: GovernorStore, payload: GitHubPayload
 
 export async function handleGitHubWebhook(store: GovernorStore, eventName: string, payload: GitHubPayload) {
   if (eventName === "push") return handlePush(store,payload);
-  if (eventName === "pull_request" && ["opened","reopened","synchronize","edited","closed"].includes(payload.action)) return handlePullRequest(store,payload);
+  if (eventName === "pull_request" && ["opened","reopened","synchronize","edited","labeled","unlabeled","closed"].includes(payload.action)) return handlePullRequest(store,payload);
   return { handled:false };
 }
 
@@ -32,7 +33,8 @@ async function handlePush(store: GovernorStore, payload: GitHubPayload) {
 async function handlePullRequest(store: GovernorStore, payload: GitHubPayload) {
   const repo=await repositoryForPayload(store,payload); const raw=payload.pull_request; const number=Number(payload.number);
   const existing=await store.getPullRequest(repo.id,number); const closed=raw.state === "closed"; const outcome:PullRequest["outcome"]=closed ? raw.merged ? "merged" : "closed_unmerged" : "open";
-  const pr: PullRequest={id:existing?.id ?? id("pr",`${repo.id}_${number}`),repositoryId:repo.id,number,branch:raw.head.ref,headSha:raw.head.sha,title:raw.title,state:closed ? "closed" : "open",outcome,commentId:existing?.commentId,mergedAt:outcome === "merged" ? raw.merged_at ?? new Date().toISOString() : undefined,closedAt:closed ? raw.closed_at ?? new Date().toISOString() : undefined,updatedAt:new Date().toISOString()};
+  const labels: Array<string | undefined> | undefined=Array.isArray(raw.labels) ? raw.labels.map((label:unknown): string | undefined=>typeof label === "string" ? label : typeof label === "object" && label && typeof (label as {name?:unknown}).name === "string" ? (label as {name:string}).name : undefined) : undefined;
+  const pr: PullRequest={id:existing?.id ?? id("pr",`${repo.id}_${number}`),repositoryId:repo.id,number,branch:raw.head.ref,headSha:raw.head.sha,title:raw.title,state:closed ? "closed" : "open",outcome,workType:labels ? deriveWorkType(labels) : existing?.workType ?? "unclassified",commentId:existing?.commentId,mergedAt:outcome === "merged" ? raw.merged_at ?? new Date().toISOString() : undefined,closedAt:closed ? raw.closed_at ?? new Date().toISOString() : undefined,updatedAt:new Date().toISOString()};
   const receipt=await refreshPullRequestReceipt(store,repo,pr);
   return {handled:true,kind:"pull_request",receipt};
 }
@@ -41,7 +43,7 @@ type ReceiptRefreshOptions = { publish?: boolean; openOnly?: boolean };
 
 /** Recalculates one known PR. Telemetry refreshes persist facts; publication happens at settled boundaries. */
 export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repository, pr: PullRequest, options: ReceiptRefreshOptions = {}) {
-  const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:pr.number,title:pr.title,headSha:pr.headSha,outcome:pr.outcome,outcomeAt:pr.mergedAt ?? pr.closedAt});
+  const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:pr.number,title:pr.title,headSha:pr.headSha,workType:pr.workType,outcome:pr.outcome,outcomeAt:pr.mergedAt ?? pr.closedAt});
   const allEvents=await store.getEvents(repo.id); const dashboard=await store.getDashboard(repo.id); receipt.observation=observeReceipt(receipt,events,allEvents.filter((event)=>event.branch!==pr.branch),dashboard.receipts);
   const previous=await store.getReceipt(repo.id,pr.number);
   if(options.publish===false) {

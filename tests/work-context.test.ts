@@ -60,9 +60,13 @@ test("changes the fingerprint when sanitized work inputs change",()=>{
 
 test("renders work context in the existing idempotent receipt markdown",()=>{
   const input=prepareWorkContextInput(baseFacts);
-  const receipt:Receipt={repositoryId:"repo",prNumber:42,title:baseFacts.title,headSha:baseFacts.headSha,totalCost:1.2,confidence:1,eventCount:2,models:[],actors:[],workContext:createWorkContext(input,"This PR updates receipt metadata and tests.","2026-07-20T00:00:00.000Z"),updatedAt:"2026-07-20T00:00:00.000Z"};
+  const receipt:Receipt={repositoryId:"repo",prNumber:42,title:baseFacts.title,headSha:baseFacts.headSha,totalCost:1.2,confidence:1,eventCount:2,models:[{model:"gpt-5.6",inputTokens:1_653_721,outputTokens:5_413,cachedInputTokens:1_000_000,costUsd:1.2}],actors:[],workType:"feature",workContext:createWorkContext(input,"This PR updates receipt metadata and tests.","2026-07-20T00:00:00.000Z"),observation:{category:"cost_outlier",severity:"warning",title:"This PR is above its usual cost",explanation:"unused in the compact comment",evidence:"unused",impactUsd:.65,confidence:1,calculationVersion:"v2",generatedAt:"2026-07-20T00:00:00.000Z",comparison:{currentCostUsd:1.2,baselineCostUsd:.55,deltaUsd:.65,multiplier:2.18,sampleSize:7,scope:"repository"}},updatedAt:"2026-07-20T00:00:00.000Z"};
   const markdown=receiptMarkdown(receipt,"https://example.com/receipt");
   assert.match(markdown,/governor-cost-receipt/);
   assert.match(markdown,/### Work context/);
-  assert.match(markdown,/This PR updates receipt metadata and tests/);
+  assert.match(markdown,/- \*\*Scope:\*\* 4 files · \+120 · −24/);
+  assert.match(markdown,/- \*\*Type:\*\* Feature/);
+  assert.match(markdown,/- \*\*gpt-5\.6\*\* — \$1\.20 · 1\.65M input/);
+  assert.match(markdown,/- \*\*Above usual cost:\*\* \$1\.20 vs \$0\.55 median across 7 repository PRs/);
+  assert.doesNotMatch(markdown,/> unused in the compact comment/);
 });
