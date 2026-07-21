@@ -206,7 +206,7 @@ The main technical risk was proving that real Codex usage could be connected to 
 The local integration introduced:
 
 - a Governor CLI;
-- a Codex notify-hook dispatcher that captures signed Git context;
+- Codex lifecycle hooks that capture signed Git context before each turn and after local shell work;
 - a Codex OpenTelemetry export path that sends token metadata;
 - a server-side join between the two streams; and
 - a `verify` command that waits for a real context/usage match.
@@ -217,7 +217,7 @@ Several useful failures were diagnosed on the way:
 - The verifier could receive signed Git context yet see no matching usage event.
 - Current Codex model IDs appeared that were not yet in Governor’s effective rate table.
 
-Governor was updated to normalize current OTel shapes, wait correctly, diagnose missing joins, and support the observed Codex model IDs. Verification then succeeded with real Codex sessions.
+Governor was updated to normalize current OTel shapes, wait correctly, diagnose missing joins, and support the observed Codex model IDs. Context is retained as timestamped history and each OTel record uses the context active when it occurred, preventing a long-lived Codex session from moving prior work onto a later branch. Streaming events update stored receipts, while GitHub publication happens once at a settled turn boundary rather than on every individual OTel event.
 
 ### Stage 5 — Validating a real multi-model PR
 
@@ -884,7 +884,8 @@ Governor intentionally does not request repository contents-write permission for
 | `developers` | GitHub identity plus hash of the local telemetry token. |
 | `web_sessions` | Hashed session token and encrypted GitHub OAuth data. |
 | `model_rates` | Effective-dated input, output, and cached-input rates. |
-| `session_contexts` | Signed local session-to-Git context joins. |
+| `session_contexts` | Current signed local session-to-Git context join used for verification. |
+| `session_context_history` | Timestamped context history used to select the branch/SHA active at an OTel event. |
 | `usage_events` | Normalized usage, context, cost, model, and confidence evidence. |
 | `pull_requests` | PR branch, SHA, state, outcome, comment ID, and timestamps. |
 | `receipts` | Stored receipt JSON keyed by repository and PR. |
@@ -897,7 +898,7 @@ Governor intentionally does not request repository contents-write permission for
 | OAuth/session | `/api/auth/github/start`, `/api/auth/github/callback`, `/api/auth/logout` | Sign in, callback handling, logout. |
 | Workspace | `/api/app/me`, `/api/app/repositories`, `/api/app/setup/*` | Current identity, authorized repos, setup token/status. |
 | GitHub | `/api/github/webhook` | Signed `push`/`pull_request` event handling and artifact publication. |
-| Local telemetry | `/api/sessions/context`, `/v1/logs`, `/api/verify` | Context intake, OTel usage intake, verification polling. |
+| Local telemetry | `/api/sessions/context`, `/api/sessions/finalize`, `/v1/logs`, `/api/verify` | Context intake, settled receipt publication, OTel usage intake, verification polling. |
 | Receipts | `/api/repos/[owner]/[repo]/receipts`, `/api/prs/[number]/receipt` | Receipt data used by APIs/public views. |
 | Future/dormant agent capability | `/api/ingest/actions`, `/api/ingest/actions/finalize`, agent-token route | CI usage ingestion; deliberately absent from the current frontend path. |
 
@@ -1003,6 +1004,8 @@ The current test suite includes coverage for:
 - webhook signature validation;
 - idempotent ingestion;
 - context-before-usage and usage-before-context joins;
+- context-history attribution across a branch switch in one Codex session;
+- open-PR-only telemetry receipt refreshes and settled GitHub publication;
 - current Codex OTel token fields;
 - timestamp normalization;
 - effective rate selection and unsupported-model rejection;

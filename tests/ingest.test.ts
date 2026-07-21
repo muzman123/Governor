@@ -19,18 +19,36 @@ test("session file fallback remains explicitly confidence-scored",async()=>{
   assert.equal(result.event?.attributionConfidence,.8); assert.equal(result.event?.attributionMethod,"session_fallback");
 });
 
-test("usage arriving before its signed context is held and attached",async()=>{
+test("usage received before its signed context attaches when the event happened after that context",async()=>{
   const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo);
   const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
   const usage=await ingestUsage(store,developer.id,{eventKey:"early-usage",source:"otel",sessionId:"thread_late",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-17T10:00:00.000Z"});
   assert.equal(usage.inserted,true); assert.equal(usage.pending,true); assert.equal(usage.event?.repositoryId,undefined);
-  const context={sessionId:"thread_late",repositorySlug:repo.slug,branch:"feature/receipt",headSha:"abc1234",developerId:developer.id,observedAt:"2026-07-17T10:00:01.000Z"};
+  const context={sessionId:"thread_late",repositorySlug:repo.slug,branch:"feature/receipt",headSha:"abc1234",developerId:developer.id,observedAt:"2026-07-17T09:59:59.000Z"};
   await store.saveContext(context);
   assert.equal(await store.attachPendingEvents(context,repo.id),1);
   const events=await store.getEvents(repo.id);
   assert.equal(events.find((event)=>event.eventKey==="early-usage")?.attributionMethod,"hook_context");
   const verification=await store.getVerificationSessions(developer.id,"2026-07-17T09:59:00.000Z");
   assert.equal(verification[0]?.eventCount,1);
+});
+
+test("legacy end-of-turn context can still attach an already-received event during rollout",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo); const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
+  const usage=await ingestUsage(store,developer.id,{eventKey:"legacy-usage",source:"otel",sessionId:"legacy-session",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:00:00.000Z"});
+  assert.equal(usage.pending,true);
+  const context={sessionId:"legacy-session",repositorySlug:repo.slug,branch:"feature/legacy",headSha:"abc1234",developerId:developer.id,observedAt:"2026-07-20T10:00:01.000Z"};
+  await store.saveContext(context); assert.equal(await store.attachPendingEvents(context,repo.id,true),1);
+  assert.equal((await store.getEvents(repo.id)).find((event)=>event.eventKey==="legacy-usage")?.branch,"feature/legacy");
+});
+
+test("uses the Git context that was active when a Codex usage event occurred",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo); const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
+  await store.saveContext({sessionId:"branch-history",repositorySlug:repo.slug,branch:"feature/old",headSha:"a1b2c3d",developerId:developer.id,observedAt:"2026-07-20T10:00:00.000Z"});
+  await store.saveContext({sessionId:"branch-history",repositorySlug:repo.slug,branch:"feature/new",headSha:"d4e5f6a",developerId:developer.id,observedAt:"2026-07-20T10:05:00.000Z"});
+  const oldEvent=await ingestUsage(store,developer.id,{eventKey:"old-turn-event",source:"otel",sessionId:"branch-history",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:04:00.000Z"});
+  const newEvent=await ingestUsage(store,developer.id,{eventKey:"new-turn-event",source:"otel",sessionId:"branch-history",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:06:00.000Z"});
+  assert.equal(oldEvent.event?.branch,"feature/old"); assert.equal(newEvent.event?.branch,"feature/new");
 });
 
 test("attributed developer usage refreshes an already-open PR receipt",async()=>{
@@ -51,10 +69,17 @@ test("late session context refreshes a receipt after it attaches pending usage",
   const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
   const result=await ingestUsage(store,developer.id,{eventKey:"late-context-event",source:"otel",sessionId:"late-context",model:"gpt-5.6",inputTokens:1_200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:01:00.000Z"});
   assert.equal(result.pending,true);
-  const context={sessionId:"late-context",repositorySlug:repo.slug,branch:"feature/late-context",headSha:"d4e5f6a",developerId:developer.id,observedAt:"2026-07-20T10:02:00.000Z"};
+  const context={sessionId:"late-context",repositorySlug:repo.slug,branch:"feature/late-context",headSha:"d4e5f6a",developerId:developer.id,observedAt:"2026-07-20T10:00:59.000Z"};
   await store.saveContext(context); assert.equal(await store.attachPendingEvents(context,repo.id),1);
   assert.equal((await refreshPullRequestReceiptsForBranch(store,repo,context.branch)).length,1);
   const receipt=await store.getReceipt(repo.id,502); assert.equal(receipt?.eventCount,1); assert.ok((receipt?.totalCost ?? 0)>0);
+});
+
+test("telemetry refreshes only open receipts on the attributed branch",async()=>{
+  const store=new MemoryGovernorStore(); const repo=await store.getRepositoryBySlug("acme/checkout"); assert.ok(repo); const developer=await store.createDeveloper({githubLogin:"maya",token:"test-token"});
+  await store.saveContext({sessionId:"closed-pr",repositorySlug:repo.slug,branch:"fix/cart-race",headSha:"4b46ac",developerId:developer.id,observedAt:"2026-07-20T10:00:00.000Z"});
+  const result=await ingestUsage(store,developer.id,{eventKey:"closed-pr-event",source:"otel",sessionId:"closed-pr",model:"gpt-5.6",inputTokens:1200,outputTokens:42,cachedInputTokens:900,occurredAt:"2026-07-20T10:01:00.000Z"});
+  assert.deepEqual(await refreshPullRequestReceiptsForUsageEvents(store,result.event?[result.event]:[]),{refreshed:0,failed:0});
 });
 
 test("repository-scoped agent tokens create exact Actions attribution and cannot cross repositories",async()=>{

@@ -4,7 +4,8 @@ import { estimateCost, resolveRate } from "./pricing";
 import type { GovernorStore } from "./store";
 import type { AgentToken, UsageEvent, UsageSource } from "./types";
 
-export const ContextSchema = z.object({ sessionId:z.string().min(1), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/), branch:z.string().min(1), headSha:z.string().min(4), observedAt:z.string().datetime().optional() });
+export const ContextSchema = z.object({ sessionId:z.string().min(1), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/), branch:z.string().min(1), headSha:z.string().min(4), observedAt:z.string().datetime().optional(), phase:z.enum(["turn_start","post_tool","turn_end"]).optional() });
+export const SessionFinalizeSchema = z.object({ sessionId:z.string().min(1), branch:z.string().min(1), headSha:z.string().min(4) });
 export const UsageSchema = z.object({ eventKey:z.string().min(1).optional(), source:z.enum(["otel","session_file","manual"]).default("manual"), sessionId:z.string().min(1).optional(), repositorySlug:z.string().regex(/^[^/]+\/[^/]+$/).optional(), branch:z.string().optional(), headSha:z.string().optional(), model:z.string().min(1), inputTokens:z.coerce.number().int().nonnegative(), outputTokens:z.coerce.number().int().nonnegative(), cachedInputTokens:z.coerce.number().int().nonnegative().default(0), occurredAt:z.string().datetime().optional() });
 export type UsageInput = z.infer<typeof UsageSchema>;
 
@@ -19,7 +20,7 @@ export const AgentFinalizeSchema=z.object({repositorySlug:z.string().regex(/^[^/
 
 export async function ingestUsage(store: GovernorStore, developerId: string, input: UsageInput): Promise<{ inserted: boolean; event?: UsageEvent; pending?: boolean }> {
   const occurredAt = input.occurredAt ?? new Date().toISOString();
-  const context = input.sessionId ? await store.getContext(input.sessionId) : undefined;
+  const context = input.sessionId ? await store.getContext(input.sessionId,occurredAt) : undefined;
   const repositorySlug = context?.repositorySlug ?? input.repositorySlug;
   const repository = repositorySlug ? await store.getRepositoryBySlug(repositorySlug) : undefined;
   if (repositorySlug && !repository) throw new Error(`Governor is not installed for repository ${repositorySlug}`);

@@ -12,7 +12,7 @@ export async function POST(request:Request) {
   const repository=await store.getRepositoryBySlug(parsed.data.repositorySlug);
   if(!repository || repository.id!==agent.repositoryId) return NextResponse.json({error:"Agent token is not authorized for this repository"},{status:403});
   try {
-    const receipts=await refreshPullRequestReceiptsForBranch(store,repository,parsed.data.branch);
+    const receipts=await refreshPullRequestReceiptsForBranch(store,repository,parsed.data.branch,{openOnly:true});
     return NextResponse.json({refreshed:receipts.length,receiptNumbers:receipts.map((receipt)=>receipt.prNumber)});
   } catch(error) {
     return NextResponse.json({error:error instanceof Error?error.message:"Receipt refresh failed"},{status:500});

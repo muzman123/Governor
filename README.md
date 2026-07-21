@@ -4,10 +4,10 @@ Governor puts transparent **estimated Codex cost receipts** on GitHub pushes and
 
 ## What works
 
-- A developer connects a user-level Codex OTel exporter and notify hook with one `governor connect` command.
-- The hook sends only session ID, GitHub repository, branch, HEAD SHA, and timestamp. The OTel receiver normalizes token metadata and uses that context to attribute work.
+- A developer connects a user-level Codex OTel exporter plus Governor context hooks with one `governor connect` command.
+- Context hooks record only session ID, GitHub repository, branch, HEAD SHA, and timestamp before each Codex turn and after local shell work. Governor selects the context active at each OTel event's timestamp, so a continuing Codex session can safely cross branches.
 - Governor applies an effective-dated token price table, retaining inputs, model rate version, and attribution confidence for every estimate.
-- GitHub `push` webhooks create a neutral **Governor — estimated Codex cost** Check Run. PR open/synchronize/close webhooks create or update one cost-receipt comment, including whether a PR merged or closed without merge.
+- GitHub `push` webhooks create a neutral **Governor — estimated Codex cost** Check Run. PR lifecycle events and one settled Codex-turn boundary create or update the cost-receipt comment; streaming telemetry updates the stored receipt without repeatedly editing GitHub.
 - Repository-scoped agent tokens let a GitHub Actions runner submit `codex exec --json` usage with deterministic repository, branch, SHA, and workflow-run context. Receipts and dashboards split developer-assisted and autonomous-agent cost.
 - PR receipts include a factual **Work context** summary. Governor transiently groups changed-file metadata and human PR/review discussion, then stores only the resulting summary, aggregate scope counts, and provenance labels—never raw comments, file paths, diffs, or repository file contents.
 - The public dashboard uses seeded aggregate data; names are never shown there. GPT-5.6 optionally turns deterministic receipt facts into a two-sentence explanation and cannot change its calculation.
@@ -36,7 +36,13 @@ Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET
 npx --yes @muzman123/governor@latest connect --url https://YOUR_HOST --token YOUR_TELEMETRY_TOKEN
 ```
 
-`connect` creates a timestamped backup before changing `~/.codex/config.toml`, keeps `log_user_prompt = false`, wraps an existing `notify` command, then waits up to ten minutes for one real Codex turn to verify the signed-context and usage join. It never changes an existing `[otel]` configuration. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
+`connect` creates timestamped backups before changing `~/.codex/config.toml` and `~/.codex/hooks.json`, keeps `log_user_prompt = false`, and wraps an existing `notify` command. It installs `UserPromptSubmit` and `PostToolUse` context hooks; review and trust them with Codex’s `/hooks` command after restarting. Governor keeps a timestamped context history and joins each token record to the context active when it occurred. It never changes an existing `[otel]` configuration. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
+
+Existing users can install a new local runtime and context hooks without replacing their token:
+
+```bash
+npx --yes @muzman123/governor@latest upgrade
+```
 
 ## Autonomous GitHub Actions agent setup
 

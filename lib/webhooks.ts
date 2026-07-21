@@ -37,13 +37,20 @@ async function handlePullRequest(store: GovernorStore, payload: GitHubPayload) {
   return {handled:true,kind:"pull_request",receipt};
 }
 
-/** Recalculates one known PR after a webhook or direct GitHub Actions upload. */
-export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repository, pr: PullRequest) {
+type ReceiptRefreshOptions = { publish?: boolean; openOnly?: boolean };
+
+/** Recalculates one known PR. Telemetry refreshes persist facts; publication happens at settled boundaries. */
+export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repository, pr: PullRequest, options: ReceiptRefreshOptions = {}) {
   const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:pr.number,title:pr.title,headSha:pr.headSha,outcome:pr.outcome,outcomeAt:pr.mergedAt ?? pr.closedAt});
   const allEvents=await store.getEvents(repo.id); const dashboard=await store.getDashboard(repo.id); receipt.observation=observeReceipt(receipt,events,allEvents.filter((event)=>event.branch!==pr.branch),dashboard.receipts);
+  const previous=await store.getReceipt(repo.id,pr.number);
+  if(options.publish===false) {
+    // Do not make a GPT call or edit GitHub for every streaming OTel record.
+    // A settled turn or PR lifecycle event publishes the current receipt once.
+    receipt.workContext=previous?.workContext; await store.saveReceipt(receipt); return receipt;
+  }
   const fallbackInput=prepareWorkContextInput({title:pr.title,headSha:pr.headSha});
   const workContextInput=await fetchPullRequestWorkContext(repo,pr) ?? fallbackInput;
-  const previous=await store.getReceipt(repo.id,pr.number);
   const described=await explainReceipt(receipt,workContextInput);
   receipt.explanation=described.explanation;
   receipt.workContext=previous?.workContext?.fingerprint===workContextInput.fingerprint ? previous.workContext : createWorkContext(workContextInput,described.workSummary);
@@ -52,10 +59,10 @@ export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repo
   return receipt;
 }
 
-/** Refreshes every known PR receipt for one attributed branch. */
-export async function refreshPullRequestReceiptsForBranch(store: GovernorStore, repo: Repository, branch: string) {
-  const prs=await store.getPullRequestsByBranch(repo.id,branch);
-  return Promise.all(prs.map((pr)=>refreshPullRequestReceipt(store,repo,pr)));
+/** Refreshes matching PR receipts for one attributed branch. */
+export async function refreshPullRequestReceiptsForBranch(store: GovernorStore, repo: Repository, branch: string, options: ReceiptRefreshOptions = {}) {
+  const prs=(await store.getPullRequestsByBranch(repo.id,branch)).filter((pr)=>!options.openOnly || pr.state === "open");
+  return Promise.all(prs.map((pr)=>refreshPullRequestReceipt(store,repo,pr,options)));
 }
 
 /**
@@ -69,7 +76,7 @@ export async function refreshPullRequestReceiptsForUsageEvents(store: GovernorSt
     if(!event.repositoryId || !event.branch) continue;
     const repo=repositories.get(event.repositoryId); if(repo) targets.set(`${repo.id}:${event.branch}`,{repo,branch:event.branch});
   }
-  const settled=await Promise.allSettled([...targets.values()].map(({repo,branch})=>refreshPullRequestReceiptsForBranch(store,repo,branch)));
+  const settled=await Promise.allSettled([...targets.values()].map(({repo,branch})=>refreshPullRequestReceiptsForBranch(store,repo,branch,{publish:false,openOnly:true})));
   return {refreshed:settled.filter((result)=>result.status === "fulfilled").reduce((count,result)=>count+(result.status === "fulfilled" ? result.value.length : 0),0),failed:settled.filter((result)=>result.status === "rejected").length};
 }
 

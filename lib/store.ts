@@ -17,8 +17,8 @@ export interface GovernorStore {
   hasActiveAgentToken(repositoryId: string): Promise<boolean>;
   markAgentTokenUsed(id: string): Promise<void>;
   saveContext(context: SessionContext): Promise<void>;
-  attachPendingEvents(context: SessionContext, repositoryId: string): Promise<number>;
-  getContext(sessionId: string): Promise<SessionContext | undefined>;
+  attachPendingEvents(context: SessionContext, repositoryId: string, allowEarlier?: boolean): Promise<number>;
+  getContext(sessionId: string, occurredAt?: string): Promise<SessionContext | undefined>;
   getVerificationSessions(developerId: string, after: string): Promise<VerificationSession[]>;
   getRates(): Promise<ModelRate[]>;
   ingestEvent(event: UsageEvent): Promise<{ inserted: boolean }>;
@@ -62,6 +62,7 @@ export class MemoryGovernorStore implements GovernorStore {
   private developers = new Map<string, Developer>();
   private agentTokens = new Map<string, AgentToken>();
   private contexts = new Map<string, SessionContext>();
+  private contextHistory = new Map<string, SessionContext[]>();
   private events = new Map<string, UsageEvent>();
   private prs = new Map<string, PullRequest>();
   private receipts = new Map<string, Receipt>();
@@ -92,16 +93,25 @@ export class MemoryGovernorStore implements GovernorStore {
   async getAgentTokenByToken(token: string) { return [...this.agentTokens.values()].find((agent)=>agent.tokenHash===hash(token) && !agent.revokedAt); }
   async hasActiveAgentToken(repositoryId: string) { return [...this.agentTokens.values()].some((agent)=>agent.repositoryId===repositoryId && !agent.revokedAt); }
   async markAgentTokenUsed(id: string) { const token=this.agentTokens.get(id); if(token) token.lastUsedAt=new Date().toISOString(); }
-  async saveContext(context: SessionContext) { this.contexts.set(context.sessionId, context); }
-  async attachPendingEvents(context: SessionContext, repositoryId: string) {
+  async saveContext(context: SessionContext) {
+    this.contexts.set(context.sessionId, context);
+    const history=this.contextHistory.get(context.sessionId) ?? [];
+    const existing=history.findIndex((entry)=>entry.observedAt===context.observedAt);
+    if(existing>=0) history[existing]=context; else history.push(context);
+    history.sort((a,b)=>a.observedAt.localeCompare(b.observedAt)); this.contextHistory.set(context.sessionId,history);
+  }
+  async attachPendingEvents(context: SessionContext, repositoryId: string, allowEarlier=false) {
     let attached=0;
     for (const event of this.events.values()) {
-      if (event.sessionId!==context.sessionId || event.developerId!==context.developerId || event.repositoryId) continue;
+      if (event.sessionId!==context.sessionId || event.developerId!==context.developerId || event.repositoryId || (!allowEarlier && event.occurredAt<context.observedAt)) continue;
       event.repositoryId=repositoryId; event.branch=context.branch; event.headSha=context.headSha; event.attributionMethod="hook_context"; event.attributionConfidence=1; attached++;
     }
     return attached;
   }
-  async getContext(sessionId: string) { return this.contexts.get(sessionId); }
+  async getContext(sessionId: string, occurredAt?: string) {
+    if(!occurredAt) return this.contexts.get(sessionId);
+    return [...(this.contextHistory.get(sessionId) ?? [])].reverse().find((context)=>context.observedAt<=occurredAt);
+  }
   async getVerificationSessions(developerId: string, after: string) {
     return [...this.contexts.values()].filter((context) => context.developerId === developerId && context.observedAt >= after).map((context) => ({ ...context, eventCount:[...this.events.values()].filter((event) => event.developerId === developerId && event.sessionId === context.sessionId && event.repositoryId).length })).sort((a,b) => b.observedAt.localeCompare(a.observedAt));
   }
@@ -137,9 +147,16 @@ export class PostgresGovernorStore implements GovernorStore {
   async getAgentTokenByToken(token: string) { const r=await this.pool.query("SELECT id,repository_id AS \"repositoryId\",label,token_hash AS \"tokenHash\",created_by_developer_id AS \"createdByDeveloperId\",created_at::text AS \"createdAt\",revoked_at::text AS \"revokedAt\",last_used_at::text AS \"lastUsedAt\" FROM agent_tokens WHERE token_hash=$1 AND revoked_at IS NULL",[hash(token)]); return r.rows[0] as AgentToken | undefined; }
   async hasActiveAgentToken(repositoryId: string) { const r=await this.pool.query("SELECT 1 FROM agent_tokens WHERE repository_id=$1 AND revoked_at IS NULL LIMIT 1",[repositoryId]); return Boolean(r.rows[0]); }
   async markAgentTokenUsed(id: string) { await this.pool.query("UPDATE agent_tokens SET last_used_at=NOW() WHERE id=$1 AND revoked_at IS NULL",[id]); }
-  async saveContext(context: SessionContext) { await this.pool.query("INSERT INTO session_contexts(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id,observed_at=EXCLUDED.observed_at",[context.sessionId,context.repositorySlug,context.branch,context.headSha,context.developerId,context.observedAt]); }
-  async attachPendingEvents(context: SessionContext, repositoryId: string) { const r=await this.pool.query("UPDATE usage_events SET repository_id=$3,branch=$4,head_sha=$5,attribution_method='hook_context',attribution_confidence=1 WHERE session_id=$1 AND developer_id=$2 AND repository_id IS NULL",[context.sessionId,context.developerId,repositoryId,context.branch,context.headSha]); return r.rowCount ?? 0; }
-  async getContext(sessionId: string) { const r=await this.pool.query("SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_contexts WHERE session_id=$1",[sessionId]); return r.rows[0] as SessionContext | undefined; }
+  async saveContext(context: SessionContext) {
+    const values=[context.sessionId,context.repositorySlug,context.branch,context.headSha,context.developerId,context.observedAt];
+    await this.pool.query("INSERT INTO session_context_history(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id,observed_at) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id",values);
+    await this.pool.query("INSERT INTO session_contexts(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id,observed_at=EXCLUDED.observed_at",values);
+  }
+  async attachPendingEvents(context: SessionContext, repositoryId: string, allowEarlier=false) { const values=[context.sessionId,context.developerId,repositoryId,context.branch,context.headSha]; if(!allowEarlier) values.push(context.observedAt); const r=await this.pool.query(`UPDATE usage_events SET repository_id=$3,branch=$4,head_sha=$5,attribution_method='hook_context',attribution_confidence=1 WHERE session_id=$1 AND developer_id=$2 AND repository_id IS NULL${allowEarlier ? "" : " AND occurred_at >= $6"}`,values); return r.rowCount ?? 0; }
+  async getContext(sessionId: string, occurredAt?: string) {
+    const query=occurredAt ? "SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_context_history WHERE session_id=$1 AND observed_at <= $2 ORDER BY observed_at DESC LIMIT 1" : "SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_contexts WHERE session_id=$1";
+    const r=await this.pool.query(query,occurredAt?[sessionId,occurredAt]:[sessionId]); return r.rows[0] as SessionContext | undefined;
+  }
   async getVerificationSessions(developerId: string, after: string) { const r=await this.pool.query("SELECT sc.session_id AS \"sessionId\",sc.repository_slug AS \"repositorySlug\",sc.branch,sc.head_sha AS \"headSha\",sc.observed_at::text AS \"observedAt\",COUNT(ue.id)::int AS \"eventCount\" FROM session_contexts sc LEFT JOIN usage_events ue ON ue.session_id=sc.session_id AND ue.developer_id=$1 AND ue.repository_id IS NOT NULL WHERE sc.developer_id=$1 AND sc.observed_at >= $2 GROUP BY sc.session_id,sc.repository_slug,sc.branch,sc.head_sha,sc.observed_at ORDER BY sc.observed_at DESC",[developerId,after]); return r.rows as VerificationSession[]; }
   async getRates() { const r=await this.pool.query("SELECT model,effective_from::text AS \"effectiveFrom\",input_per_mtok::float AS \"inputPerMTok\",output_per_mtok::float AS \"outputPerMTok\",cached_input_per_mtok::float AS \"cachedInputPerMTok\" FROM model_rates"); const rates=new Map(DEFAULT_MODEL_RATES.map((rate)=>[`${rate.model}:${rate.effectiveFrom}`,rate])); for(const rate of r.rows as ModelRate[]) rates.set(`${rate.model}:${rate.effectiveFrom}`,rate); return [...rates.values()]; }
   async ingestEvent(event: UsageEvent) { const r=await this.pool.query("INSERT INTO usage_events(id,event_key,source,session_id,repository_id,developer_id,actor_type,actor_name,workflow_run_id,workflow_run_url,workflow_name,branch,head_sha,model,input_tokens,output_tokens,cached_input_tokens,occurred_at,cost_usd,rate_effective_from,attribution_method,attribution_confidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT(event_key) DO NOTHING",[event.id,event.eventKey,event.source,event.sessionId ?? null,event.repositoryId ?? null,event.developerId ?? null,event.actorType,event.actorName ?? null,event.workflowRunId ?? null,event.workflowRunUrl ?? null,event.workflowName ?? null,event.branch ?? null,event.headSha ?? null,event.model,event.inputTokens,event.outputTokens,event.cachedInputTokens,event.occurredAt,event.costUsd,event.rateEffectiveFrom,event.attributionMethod,event.attributionConfidence]); return {inserted:r.rowCount===1}; }
