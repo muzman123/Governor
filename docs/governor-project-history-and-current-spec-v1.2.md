@@ -206,7 +206,7 @@ The main technical risk was proving that real Codex usage could be connected to 
 The local integration introduced:
 
 - a Governor CLI;
-- Codex lifecycle hooks that capture signed Git context before each turn and after local shell work;
+- the existing Codex end-of-turn notification hook, which captures signed Git context without requiring Codex CLI;
 - a Codex OpenTelemetry export path that sends token metadata;
 - a server-side join between the two streams; and
 - a `verify` command that waits for a real context/usage match.
@@ -217,7 +217,7 @@ Several useful failures were diagnosed on the way:
 - The verifier could receive signed Git context yet see no matching usage event.
 - Current Codex model IDs appeared that were not yet in Governor’s effective rate table.
 
-Governor was updated to normalize current OTel shapes, wait correctly, diagnose missing joins, and support the observed Codex model IDs. Context is retained as timestamped history and each OTel record uses the context active when it occurred, preventing a long-lived Codex session from moving prior work onto a later branch. Streaming events update stored receipts, while GitHub publication happens once at a settled turn boundary rather than on every individual OTel event.
+Governor was updated to normalize current OTel shapes, wait correctly, diagnose missing joins, and support the observed Codex model IDs. Completed-turn context is retained as timestamped history; each OTel record is joined to the first completed-turn boundary at or after its timestamp, preventing a long-lived Codex session from moving new work onto a previous branch. Streaming events update stored receipts, while GitHub publication happens once at a settled turn boundary rather than on every individual OTel event.
 
 ### Stage 5 — Validating a real multi-model PR
 
@@ -885,7 +885,7 @@ Governor intentionally does not request repository contents-write permission for
 | `web_sessions` | Hashed session token and encrypted GitHub OAuth data. |
 | `model_rates` | Effective-dated input, output, and cached-input rates. |
 | `session_contexts` | Current signed local session-to-Git context join used for verification. |
-| `session_context_history` | Timestamped context history used to select the branch/SHA active at an OTel event. |
+| `session_context_history` | Timestamped completed-turn boundaries used to select the branch/SHA for an OTel event. |
 | `usage_events` | Normalized usage, context, cost, model, and confidence evidence. |
 | `pull_requests` | PR branch, SHA, state, outcome, comment ID, and timestamps. |
 | `receipts` | Stored receipt JSON keyed by repository and PR. |
@@ -1004,7 +1004,7 @@ The current test suite includes coverage for:
 - webhook signature validation;
 - idempotent ingestion;
 - context-before-usage and usage-before-context joins;
-- context-history attribution across a branch switch in one Codex session;
+- completed-turn attribution across a branch switch in one Codex session;
 - open-PR-only telemetry receipt refreshes and settled GitHub publication;
 - current Codex OTel token fields;
 - timestamp normalization;

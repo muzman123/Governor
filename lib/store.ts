@@ -17,7 +17,7 @@ export interface GovernorStore {
   hasActiveAgentToken(repositoryId: string): Promise<boolean>;
   markAgentTokenUsed(id: string): Promise<void>;
   saveContext(context: SessionContext): Promise<void>;
-  attachPendingEvents(context: SessionContext, repositoryId: string, allowEarlier?: boolean): Promise<number>;
+  attachPendingEvents(context: SessionContext, repositoryId: string, after?: string): Promise<number>;
   getContext(sessionId: string, occurredAt?: string): Promise<SessionContext | undefined>;
   getVerificationSessions(developerId: string, after: string): Promise<VerificationSession[]>;
   getRates(): Promise<ModelRate[]>;
@@ -100,17 +100,20 @@ export class MemoryGovernorStore implements GovernorStore {
     if(existing>=0) history[existing]=context; else history.push(context);
     history.sort((a,b)=>a.observedAt.localeCompare(b.observedAt)); this.contextHistory.set(context.sessionId,history);
   }
-  async attachPendingEvents(context: SessionContext, repositoryId: string, allowEarlier=false) {
+  async attachPendingEvents(context: SessionContext, repositoryId: string, after?: string) {
     let attached=0;
     for (const event of this.events.values()) {
-      if (event.sessionId!==context.sessionId || event.developerId!==context.developerId || event.repositoryId || (!allowEarlier && event.occurredAt<context.observedAt)) continue;
+      if (event.sessionId!==context.sessionId || event.developerId!==context.developerId || event.repositoryId || event.occurredAt>context.observedAt || (after!==undefined && event.occurredAt<=after)) continue;
       event.repositoryId=repositoryId; event.branch=context.branch; event.headSha=context.headSha; event.attributionMethod="hook_context"; event.attributionConfidence=1; attached++;
     }
     return attached;
   }
   async getContext(sessionId: string, occurredAt?: string) {
     if(!occurredAt) return this.contexts.get(sessionId);
-    return [...(this.contextHistory.get(sessionId) ?? [])].reverse().find((context)=>context.observedAt<=occurredAt);
+    // A notify context closes a Codex turn. Match usage to the first completed
+    // turn whose end timestamp is on or after the usage record, never the last
+    // branch merely seen in a long-lived session.
+    return (this.contextHistory.get(sessionId) ?? []).find((context)=>context.observedAt>=occurredAt);
   }
   async getVerificationSessions(developerId: string, after: string) {
     return [...this.contexts.values()].filter((context) => context.developerId === developerId && context.observedAt >= after).map((context) => ({ ...context, eventCount:[...this.events.values()].filter((event) => event.developerId === developerId && event.sessionId === context.sessionId && event.repositoryId).length })).sort((a,b) => b.observedAt.localeCompare(a.observedAt));
@@ -152,9 +155,9 @@ export class PostgresGovernorStore implements GovernorStore {
     await this.pool.query("INSERT INTO session_context_history(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id,observed_at) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id",values);
     await this.pool.query("INSERT INTO session_contexts(session_id,repository_slug,branch,head_sha,developer_id,observed_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(session_id) DO UPDATE SET repository_slug=EXCLUDED.repository_slug,branch=EXCLUDED.branch,head_sha=EXCLUDED.head_sha,developer_id=EXCLUDED.developer_id,observed_at=EXCLUDED.observed_at",values);
   }
-  async attachPendingEvents(context: SessionContext, repositoryId: string, allowEarlier=false) { const values=[context.sessionId,context.developerId,repositoryId,context.branch,context.headSha]; if(!allowEarlier) values.push(context.observedAt); const r=await this.pool.query(`UPDATE usage_events SET repository_id=$3,branch=$4,head_sha=$5,attribution_method='hook_context',attribution_confidence=1 WHERE session_id=$1 AND developer_id=$2 AND repository_id IS NULL${allowEarlier ? "" : " AND occurred_at >= $6"}`,values); return r.rowCount ?? 0; }
+  async attachPendingEvents(context: SessionContext, repositoryId: string, after?: string) { const values=[context.sessionId,context.developerId,repositoryId,context.branch,context.headSha,context.observedAt]; let window=" AND occurred_at <= $6"; if(after!==undefined) { values.push(after); window+=" AND occurred_at > $7"; } const r=await this.pool.query(`UPDATE usage_events SET repository_id=$3,branch=$4,head_sha=$5,attribution_method='hook_context',attribution_confidence=1 WHERE session_id=$1 AND developer_id=$2 AND repository_id IS NULL${window}`,values); return r.rowCount ?? 0; }
   async getContext(sessionId: string, occurredAt?: string) {
-    const query=occurredAt ? "SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_context_history WHERE session_id=$1 AND observed_at <= $2 ORDER BY observed_at DESC LIMIT 1" : "SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_contexts WHERE session_id=$1";
+    const query=occurredAt ? "SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_context_history WHERE session_id=$1 AND observed_at >= $2 ORDER BY observed_at ASC LIMIT 1" : "SELECT session_id AS \"sessionId\",repository_slug AS \"repositorySlug\",branch,head_sha AS \"headSha\",developer_id AS \"developerId\",observed_at::text AS \"observedAt\" FROM session_contexts WHERE session_id=$1";
     const r=await this.pool.query(query,occurredAt?[sessionId,occurredAt]:[sessionId]); return r.rows[0] as SessionContext | undefined;
   }
   async getVerificationSessions(developerId: string, after: string) { const r=await this.pool.query("SELECT sc.session_id AS \"sessionId\",sc.repository_slug AS \"repositorySlug\",sc.branch,sc.head_sha AS \"headSha\",sc.observed_at::text AS \"observedAt\",COUNT(ue.id)::int AS \"eventCount\" FROM session_contexts sc LEFT JOIN usage_events ue ON ue.session_id=sc.session_id AND ue.developer_id=$1 AND ue.repository_id IS NOT NULL WHERE sc.developer_id=$1 AND sc.observed_at >= $2 GROUP BY sc.session_id,sc.repository_slug,sc.branch,sc.head_sha,sc.observed_at ORDER BY sc.observed_at DESC",[developerId,after]); return r.rows as VerificationSession[]; }

@@ -10,11 +10,11 @@ After signing in to Governor, copy the one-time command from the Setup page:
 npx --yes @muzman123/governor@latest connect --url https://YOUR_GOVERNOR_HOST --token YOUR_ONE_TIME_TOKEN
 ```
 
-The command backs up Codex configuration and hooks, keeps prompt collection disabled, preserves an existing Codex `notify` command, and installs `UserPromptSubmit` and `PostToolUse` hooks that record only Git context. Restart Codex, review and trust the new hooks with `/hooks`, then complete one task from a connected GitHub repository.
+The command backs up Codex configuration, keeps prompt collection disabled, and preserves an existing Codex `notify` command. The notify bridge records only completed-turn Git context, so it works with the ChatGPT desktop app without Codex CLI, lifecycle hooks, or hook approval. Restart Codex, then complete one task from a connected GitHub repository.
 
 To intentionally replace a previous Governor connection on the same computer, generate a replacement token in Governor Setup and append `--replace`. This replaces only Governor's managed telemetry block; it never overwrites a third-party OTel configuration.
 
-To install a newer local runtime and context hooks without replacing the existing telemetry token, run:
+To install a newer local runtime without replacing the existing telemetry token, run:
 
 ```bash
 npx --yes @muzman123/governor@latest upgrade

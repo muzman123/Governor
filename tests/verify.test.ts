@@ -6,7 +6,7 @@ import { ingestUsage } from "../lib/ingest";
 test("verification distinguishes received git context from a joined usage event", async () => {
   const store = new MemoryGovernorStore();
   const developer = await store.createDeveloper({ githubLogin:"maya", token:"verify-token" });
-  const observedAt = "2026-07-17T09:00:00.000Z";
+  const observedAt = "2026-07-17T09:00:02.000Z";
   await store.saveContext({ sessionId:"verify-session", repositorySlug:"acme/checkout", branch:"feature/verify", headSha:"abc1234", developerId:developer.id, observedAt });
 
   const beforeUsage = await store.getVerificationSessions(developer.id, "2026-07-17T08:59:00.000Z");

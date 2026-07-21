@@ -9,9 +9,9 @@ export async function POST(request: Request) {
   const token=bearerToken(request.headers.get("authorization")); const store=getStore(); const developer=token ? await store.getDeveloperByToken(token) : undefined;
   if(!developer) return NextResponse.json({error:"Invalid developer telemetry token"},{status:401});
   const parsed=SessionFinalizeSchema.safeParse(await request.json()); if(!parsed.success) return NextResponse.json({error:parsed.error.flatten()},{status:400});
-  const context=await store.getContext(parsed.data.sessionId);
+  const context=await store.getContext(parsed.data.sessionId,parsed.data.observedAt);
   if(!context || context.developerId!==developer.id) return NextResponse.json({error:"No active Governor context for this Codex session"},{status:404});
-  if(context.branch!==parsed.data.branch || context.headSha!==parsed.data.headSha) return NextResponse.json({ok:true,skipped:"context advanced",refreshed:0});
+  if(context.branch!==parsed.data.branch || context.headSha!==parsed.data.headSha) return NextResponse.json({ok:true,skipped:"context mismatch",refreshed:0});
   const repository=await store.getRepositoryBySlug(context.repositorySlug);
   if(!repository) return NextResponse.json({error:"Governor is not installed for this repository"},{status:404});
   try {

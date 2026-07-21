@@ -4,8 +4,8 @@ Governor puts transparent **estimated Codex cost receipts** on GitHub pushes and
 
 ## What works
 
-- A developer connects a user-level Codex OTel exporter plus Governor context hooks with one `governor connect` command.
-- Context hooks record only session ID, GitHub repository, branch, HEAD SHA, and timestamp before each Codex turn and after local shell work. Governor selects the context active at each OTel event's timestamp, so a continuing Codex session can safely cross branches.
+- A developer connects a user-level Codex OTel exporter and Governor's existing end-of-turn notification bridge with one `governor connect` command.
+- The notification bridge records only session ID, GitHub repository, branch, HEAD SHA, and a completed-turn timestamp. Governor joins usage to the completed-turn window containing its timestamp, so a continuing desktop-app session can safely cross branches.
 - Governor applies an effective-dated token price table, retaining inputs, model rate version, and attribution confidence for every estimate.
 - GitHub `push` webhooks create a neutral **Governor — estimated Codex cost** Check Run. PR lifecycle events and one settled Codex-turn boundary create or update the cost-receipt comment; streaming telemetry updates the stored receipt without repeatedly editing GitHub.
 - Repository-scoped agent tokens let a GitHub Actions runner submit `codex exec --json` usage with deterministic repository, branch, SHA, and workflow-run context. Receipts and dashboards split developer-assisted and autonomous-agent cost.
@@ -36,9 +36,9 @@ Configure GitHub OAuth (`GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET
 npx --yes @muzman123/governor@latest connect --url https://YOUR_HOST --token YOUR_TELEMETRY_TOKEN
 ```
 
-`connect` creates timestamped backups before changing `~/.codex/config.toml` and `~/.codex/hooks.json`, keeps `log_user_prompt = false`, and wraps an existing `notify` command. It installs `UserPromptSubmit` and `PostToolUse` context hooks; review and trust them with Codex’s `/hooks` command after restarting. Governor keeps a timestamped context history and joins each token record to the context active when it occurred. It never changes an existing `[otel]` configuration. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
+`connect` creates a timestamped backup before changing `~/.codex/config.toml`, keeps `log_user_prompt = false`, and wraps an existing `notify` command. It works with the ChatGPT desktop app; it does not install Codex lifecycle hooks or require Codex CLI. Governor keeps timestamped completed-turn boundaries and joins each token record to the matching window. It never changes an existing `[otel]` configuration. If live OTel/session correlation proves unavailable for a Codex version, use the explicit fallback `governor capture --file <session.jsonl>`; uncorrelated costs remain confidence-scored rather than guessed.
 
-Existing users can install a new local runtime and context hooks without replacing their token:
+Existing users can install a new local runtime without replacing their token:
 
 ```bash
 npx --yes @muzman123/governor@latest upgrade
