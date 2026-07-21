@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Dashboard, OutcomeMetrics, Receipt, Repository, RepositoryOverview } from "@/lib/types";
+import { categoryLabel } from "@/lib/work-context";
 import { observationFallback } from "@/lib/observations";
 import { AutoRefresh } from "./live-refresh";
 import { AppNavigation } from "./app-navigation";
@@ -70,22 +71,21 @@ function OutcomeRow({label,count,value,tone}:{label:string;count:number;value?:n
   return <div className="outcome-row"><span className={`outcome-dot ${tone}`}/><strong>{label}</strong><small>{count} PR{count===1?"":"s"}</small>{value!==undefined&&<span>{money(value)}</span>}</div>;
 }
 
-function ChartEmpty({label}:{label:string}) {
-  return <div className="chart-empty">{label}</div>;
-}
+function ChartEmpty({label}:{label:string}) { return <div className="chart-empty">{label}</div>; }
 
 function ActivityFeed({events}:{events:RepositoryOverview["recentEvents"]}) {
   return <section className="panel"><div className="panel-heading"><div><div className="eyebrow">Recent activity</div><h2>Telemetry joined to work</h2></div></div>{events.length?<div className="activity-list">{events.slice(0,7).map((event)=><div className="activity-row" key={event.id}><span className="activity-pulse"/><div><strong>Codex work · {event.model}</strong><small>{event.branch ?? "No branch"} · {date(event.occurredAt)}</small></div><strong>{money(event.costUsd)}</strong></div>)}</div>:<ChartEmpty label="Waiting for the first attributed event."/>}</section>;
 }
 
 export function ReceiptTable({receipts,repository,publicView}:{receipts:Receipt[];repository:Repository;publicView?:boolean}) {
-  return <section className="panel receipts-panel"><div className="panel-heading"><div><div className="eyebrow">Pull request receipts</div><h2>Cost, with evidence</h2></div></div>{receipts.length?<div className="receipt-table">{receipts.map((receipt)=><Link key={receipt.prNumber} href={publicView?`/api/prs/${receipt.prNumber}/receipt?repo=${encodeURIComponent(repository.slug)}`:`/app/repos/${repository.slug}/pulls/${receipt.prNumber}`} className="receipt-row"><div><strong>#{receipt.prNumber} · {receipt.title}</strong><small>{outcomeLabel(receipt.outcome)}</small></div><div><strong>{money(receipt.totalCost)}</strong><small>{receipt.eventCount} events · {confidence(receipt.confidence)}</small></div><span>→</span></Link>)}</div>:<ChartEmpty label="No pull request receipts have been created yet."/>}</section>;
+  return <section className="panel receipts-panel"><div className="panel-heading"><div><div className="eyebrow">Pull request receipts</div><h2>Cost, with evidence</h2></div></div>{receipts.length?<div className="receipt-table">{receipts.map((receipt)=><Link key={receipt.prNumber} href={publicView?`/api/prs/${receipt.prNumber}/receipt?repo=${encodeURIComponent(repository.slug)}`:`/app/repos/${repository.slug}/pulls/${receipt.prNumber}`} className="receipt-row"><div><strong>#{receipt.prNumber} · {receipt.title}</strong><small>{outcomeLabel(receipt.outcome)}</small><WorkContextInline context={receipt.workContext}/></div><div><strong>{money(receipt.totalCost)}</strong><small>{receipt.eventCount} events · {confidence(receipt.confidence)}</small></div><span>→</span></Link>)}</div>:<ChartEmpty label="No pull request receipts have been created yet."/>}</section>;
 }
 
 export function ReceiptDetail({receipt,repository}:{receipt:Receipt;repository:Repository}) {
   return <>
     <PageHeader eyebrow={`Pull request receipt · ${repository.slug}`} title={`#${receipt.prNumber} · ${receipt.title}`} description={`Updated ${date(receipt.updatedAt)} · Commit ${receipt.headSha.slice(0,7)}`} action={<a className="button small-button" href={`https://github.com/${repository.slug}/pull/${receipt.prNumber}`} target="_blank">Open GitHub ↗</a>}/>
     <section className="receipt-hero"><div><span className="metric-label">Estimated Codex cost</span><strong>{money(receipt.totalCost)}</strong><small>{receipt.eventCount} usage events · {confidence(receipt.confidence)} · {outcomeLabel(receipt.outcome)}</small></div><div className="confidence-card"><span className="privacy-dot"/><strong>{Math.round(receipt.confidence*100)}% confidence</strong><small>Signed Git context attribution</small></div></section>
+    <WorkContextCard context={receipt.workContext}/>
     <ObservationCard observation={receipt.observation}/>
     <div className="receipt-outcome" style={{marginBottom:16}}><ReceiptOutcome outcome={receipt.outcome} outcomeAt={receipt.outcomeAt}/></div>
     <section className="two-column"><section className="panel"><div className="panel-heading"><div><div className="eyebrow">Cost breakdown</div><h2>Models and token counts</h2></div></div><div className="breakdown-list">{receipt.models.map((model)=><div className="breakdown-row" key={model.model}><div><strong>{model.model}</strong><small>{model.inputTokens.toLocaleString()} input · {model.cachedInputTokens.toLocaleString()} cached · {model.outputTokens.toLocaleString()} output</small></div><strong>{money(model.costUsd)}</strong></div>)}</div></section><section className="panel"><div className="eyebrow">Calculation</div><h2>Deterministic by design</h2><p>{receipt.explanation ?? "Governor calculated this token-rate estimate from recorded model token metadata and the effective rate at the time of use."}</p><dl className="calculation-list"><div><dt>Attribution</dt><dd>{confidence(receipt.confidence)}</dd></div><div><dt>Rate method</dt><dd>Effective-dated token rates</dd></div><div><dt>Privacy</dt><dd>No prompts or code stored</dd></div></dl></section></section>
@@ -103,8 +103,23 @@ function ObservationCard({observation}:{observation?:Receipt["observation"]}) {
   return <section className="observation-card"><div className="observation-icon">✦</div><div><div className="eyebrow">Governor observation</div><h2>{observation?.title ?? fallback.title}</h2><p>{observation?.explanation ?? fallback.body}</p>{observation&&<><div className="observation-evidence">{observation.evidence}</div><div className="observation-meta">{observation.impactUsd!==undefined&&<span>Estimated impact · {money(observation.impactUsd)}</span>}<span>Confidence · {Math.round(observation.confidence*100)}%</span><span>Deterministic calculation v{observation.calculationVersion.replace("v","")}</span></div></>}</div></section>;
 }
 
+export function WorkContextInline({context}:{context?:Receipt["workContext"]}) {
+  return context?<small className="work-context-inline" title={context.summary}>{context.summary}</small>:null;
+}
+
+function WorkContextCard({context}:{context?:Receipt["workContext"]}) {
+  if(!context) return null;
+  const scope=[
+    context.filesChanged!==undefined?`${context.filesChanged} files`:undefined,
+    typeof context.additions==="number"?`+${context.additions}`:undefined,
+    typeof context.deletions==="number"?`−${context.deletions}`:undefined,
+    ...(context.categoryCoverage==="complete"?context.categories.map((category)=>`${category.fileCount} ${categoryLabel(category.category)}`):[])
+  ].filter((item): item is string=>Boolean(item));
+  return <section className="work-context-card"><div className="eyebrow">Work context</div><h2>What this receipt covers</h2><p>{context.summary}</p>{scope.length>0&&<div className="work-context-scope">{scope.map((item)=><span key={item}>{item}</span>)}</div>}<small>Derived from PR metadata and human discussion; raw comments and file contents are not stored.</small></section>;
+}
+
 export function PrivacyNotice() {
-  return <div className="privacy-notice"><span className="privacy-dot"/><span><strong>Prompt-safe by design.</strong> Governor stores token metadata and Git context—never prompts, responses, or generated code.</span></div>;
+  return <div className="privacy-notice"><span className="privacy-dot"/><span><strong>Prompt-safe by design.</strong> Governor stores token metadata, Git context, and a generated Work context summary—never prompts, responses, generated code, raw PR comments, or repository file contents.</span></div>;
 }
 
 export function EmptyState() {

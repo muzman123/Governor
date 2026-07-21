@@ -24,12 +24,34 @@ export type PullRequest = {
 
 export type ModelBreakdown = { model: string; inputTokens: number; outputTokens: number; cachedInputTokens: number; costUsd: number };
 export type ActorBreakdown = { actorType: ActorType; label: string; eventCount: number; costUsd: number };
+export type WorkContextCategory = "application" | "tests" | "documentation" | "configuration" | "dependencies" | "ci" | "migrations" | "other";
+export type WorkContextCategoryCount = { category: WorkContextCategory; fileCount: number };
+export type WorkContextSource = "pr_metadata" | "pr_discussion" | "review_comments";
+export type WorkContextComment = { kind: "discussion" | "review" | "inline_review"; body: string; createdAt?: string };
+
+/**
+ * Ephemeral, sanitized GitHub facts used to describe the scope of a PR. This
+ * object must never be persisted: it can contain file paths and PR-comment text.
+ */
+export type WorkContextInput = {
+  title: string; repositoryDescription?: string; headSha: string;
+  filesChanged?: number; additions?: number; deletions?: number;
+  categories: WorkContextCategoryCount[]; categoryCoverage: "complete" | "partial" | "unavailable";
+  comments: WorkContextComment[]; sources: WorkContextSource[]; fingerprint: string;
+};
+
+/** A privacy-safe, stored description of the engineering work on a receipt. */
+export type WorkContext = {
+  summary: string; filesChanged?: number; additions?: number; deletions?: number;
+  categories: WorkContextCategoryCount[]; categoryCoverage: "complete" | "partial" | "unavailable";
+  sources: WorkContextSource[]; headSha: string; fingerprint: string; generatedAt: string;
+};
 export type ObservationCategory = "cache_efficiency" | "cost_outlier" | "model_mix" | "attribution_quality";
 export type ReceiptObservation = { category: ObservationCategory; title: string; explanation: string; evidence: string; impactUsd?: number; confidence: number; calculationVersion: string; generatedAt: string };
 export type Receipt = {
   repositoryId: string; prNumber: number; title: string; headSha: string; totalCost: number; confidence: number; eventCount: number;
   models: ModelBreakdown[]; actors: ActorBreakdown[]; outcome?: PullRequestOutcome; outcomeAt?: string;
-  explanation?: string; observation?: ReceiptObservation; updatedAt: string;
+  explanation?: string; observation?: ReceiptObservation; workContext?: WorkContext; updatedAt: string;
 };
 
 export type OutcomeMetrics = {

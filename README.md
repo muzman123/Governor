@@ -9,6 +9,7 @@ Governor puts transparent **estimated Codex cost receipts** on GitHub pushes and
 - Governor applies an effective-dated token price table, retaining inputs, model rate version, and attribution confidence for every estimate.
 - GitHub `push` webhooks create a neutral **Governor — estimated Codex cost** Check Run. PR open/synchronize/close webhooks create or update one cost-receipt comment, including whether a PR merged or closed without merge.
 - Repository-scoped agent tokens let a GitHub Actions runner submit `codex exec --json` usage with deterministic repository, branch, SHA, and workflow-run context. Receipts and dashboards split developer-assisted and autonomous-agent cost.
+- PR receipts include a factual **Work context** summary. Governor transiently groups changed-file metadata and human PR/review discussion, then stores only the resulting summary, aggregate scope counts, and provenance labels—never raw comments, file paths, diffs, or repository file contents.
 - The public dashboard uses seeded aggregate data; names are never shown there. GPT-5.6 optionally turns deterministic receipt facts into a two-sentence explanation and cannot change its calculation.
 
 ## Run locally
@@ -66,7 +67,7 @@ Deploy the Next.js app to Vercel, Railway, or Render, use Supabase/Postgres for 
 
 ## How Codex and GPT-5.6 were used
 
-Codex accelerated the architecture, TypeScript implementation, test design, data schema, CLI workflow, GitHub App integration, agent-ingestion flow, and demo surface. Product decisions remained human-led: Governor prioritizes transparent, prompt-safe cost attribution over broad but weak vendor coverage, avoids prompt/code collection, and never writes to repository contents. GPT-5.6 is used in-product only for a bounded receipt explanation generated from already-calculated aggregate metrics; pricing, attribution, actor classification, and outcome metrics remain deterministic code.
+Codex accelerated the architecture, TypeScript implementation, test design, data schema, CLI workflow, GitHub App integration, agent-ingestion flow, and demo surface. Product decisions remained human-led: Governor prioritizes transparent, prompt-safe cost attribution over broad but weak vendor coverage, avoids prompt/code collection, and never writes to repository contents. GPT-5.6 is used in-product only for a bounded receipt explanation and factual Work context summary generated from calculated receipt facts plus transient PR metadata/discussion; pricing, attribution, actor classification, outcome metrics, and file-category counts remain deterministic code.
 
 ## Judge test path
 

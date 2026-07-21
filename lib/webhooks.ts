@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { explainReceipt } from "./explainer";
-import { publishCommitCheck, publishPullRequestReceipt } from "./github";
+import { fetchPullRequestWorkContext, publishCommitCheck, publishPullRequestReceipt } from "./github";
 import { buildReceipt } from "./receipts";
 import { observeReceipt } from "./observations";
+import { createWorkContext, prepareWorkContextInput } from "./work-context";
 import type { GovernorStore } from "./store";
 import type { PullRequest, Repository } from "./types";
 
@@ -40,7 +41,13 @@ async function handlePullRequest(store: GovernorStore, payload: GitHubPayload) {
 export async function refreshPullRequestReceipt(store: GovernorStore, repo: Repository, pr: PullRequest) {
   const events=await store.getEvents(repo.id,{branch:pr.branch}); const receipt=buildReceipt(events,{repositoryId:repo.id,prNumber:pr.number,title:pr.title,headSha:pr.headSha,outcome:pr.outcome,outcomeAt:pr.mergedAt ?? pr.closedAt});
   const allEvents=await store.getEvents(repo.id); const dashboard=await store.getDashboard(repo.id); receipt.observation=observeReceipt(receipt,events,allEvents.filter((event)=>event.branch!==pr.branch),dashboard.receipts);
-  receipt.explanation=await explainReceipt(receipt); await store.saveReceipt(receipt);
+  const fallbackInput=prepareWorkContextInput({title:pr.title,headSha:pr.headSha});
+  const workContextInput=await fetchPullRequestWorkContext(repo,pr) ?? fallbackInput;
+  const previous=await store.getReceipt(repo.id,pr.number);
+  const described=await explainReceipt(receipt,workContextInput);
+  receipt.explanation=described.explanation;
+  receipt.workContext=previous?.workContext?.fingerprint===workContextInput.fingerprint ? previous.workContext : createWorkContext(workContextInput,described.workSummary);
+  await store.saveReceipt(receipt);
   pr.commentId=await publishPullRequestReceipt(repo,pr,receipt); await store.upsertPullRequest(pr);
   return receipt;
 }

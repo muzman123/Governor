@@ -324,6 +324,7 @@ For a supported PR, Governor provides:
 - attribution confidence;
 - deterministic explanation and effective-rate method;
 - a PR outcome state when applicable; and
+- a factual Work context summary of the associated PR scope; and
 - a calm observation when sufficient evidence exists.
 
 ### 7.3 The product boundary
@@ -334,6 +335,7 @@ Governor is a **receipt and understanding layer**, not a billing system or enfor
 | --- | --- |
 | Estimates usage using stored token counts and effective rates. | Reconcile vendor invoices or contracts. |
 | Connects usage to Git work. | Inspect prompts, responses, code, or repository contents. |
+| Transiently summarizes PR metadata and human PR/review discussion. | Store raw comments, file paths, diffs, or file contents. |
 | Shows model mix, confidence, outcomes, and observations. | Declare a developer inefficient or a PR worthless. |
 | Publishes a neutral GitHub comment and Check Run. | Block a merge or enforce a budget. |
 | Explains structured evidence with GPT-5.6. | Let a model alter arithmetic, confidence, or evidence. |
@@ -484,6 +486,12 @@ The hero displays:
 - PR outcome; and
 - a confidence card explaining signed Git context.
 
+#### Work context block
+
+Below the cost hero, Governor shows one or two neutral sentences explaining the PR scope. It uses the PR title, repository description, changed-file metadata, and current non-bot human discussion/review text. Raw paths/comments are processed transiently and never stored; the receipt retains only the summary, aggregate category counts, sources, and a refresh fingerprint.
+
+The language describes what the receipt is attached to. It never allocates dollars to files or categories, recommends a change, judges the work, or evaluates developer behavior.
+
 #### Governor observation block
 
 The observation block is visually distinct: indigo/teal, calm, and insight-oriented rather than red or alert-like.
@@ -630,8 +638,9 @@ Developer machine ──► Governor Next.js / Vercel ◄── GitHub App
 | OTel receiver | Normalizes Codex token metadata and stores usage events. |
 | Pricing engine | Selects effective-dated model rates and calculates an event estimate. |
 | Receipt engine | Groups events by PR branch and computes the stored receipt. |
+| Work-context builder | Sanitizes transient PR metadata/discussion, computes deterministic scope aggregates, and creates a privacy-safe fallback. |
 | Observation engine | Produces deterministic evidence, thresholds, and impact estimates. |
-| GPT-5.6 explainer | Optionally turns structured evidence into concise prose without controlling calculations. |
+| GPT-5.6 explainer | Optionally turns structured cost and Work context evidence into concise prose without controlling calculations. |
 
 ### 10.3 Deployment components
 
@@ -813,6 +822,8 @@ The tone is intentionally observational. A low cache ratio is not an incident, a
 - model responses;
 - generated code;
 - repository file contents;
+- raw PR discussion/review comments;
+- raw file paths or diff patches;
 - raw GitHub OAuth tokens in the browser; or
 - raw telemetry tokens after issuance.
 
@@ -827,7 +838,7 @@ The tone is intentionally observational. A low cache ratio is not an incident, a
 - selected rate date and estimated cost;
 - attribution method and confidence;
 - PR title/number/state/outcome;
-- receipt JSON and deterministic observation data; and
+- receipt JSON, deterministic observation data, and privacy-safe Work context summaries/aggregate categories; and
 - encrypted server-side GitHub OAuth session material.
 
 ### 14.3 Authentication and authorization
