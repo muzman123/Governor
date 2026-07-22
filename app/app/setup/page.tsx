@@ -8,7 +8,7 @@ export default async function SetupPage() {
   const url = process.env.GOVERNOR_URL ?? "http://localhost:3000";
 
   return <>
-    <PageHeader eyebrow="Setup" title="Setup" description="Connect Codex and verify one real turn." />
+    <PageHeader eyebrow="Setup" title="Setup" description="Install once per repository. Each contributor connects their Codex profile." />
     <section className="setup-grid">
       <article className="setup-steps">
         <SetupStep number="01" title="Install GitHub App" detail={repositories.length ? `${repositories.length} ${repositories.length === 1 ? "repository is" : "repositories are"} ready.` : "Install Governor on a repository, then return here."} complete={repositories.length > 0} />
@@ -19,11 +19,11 @@ export default async function SetupPage() {
     </section>
     <section className="panel troubleshooting">
       <div className="eyebrow">Status</div>
-      <h2>What gets connected</h2>
+      <h2>Shared repository setup</h2>
       <div className="troubleshooting-grid">
-        <p><strong>GitHub</strong> Repository and pull request events.</p>
-        <p><strong>Codex</strong> Token metadata only.</p>
-        <p><strong>Verification</strong> One attributed usage event.</p>
+        <p><strong>GitHub</strong> One installation covers repository and pull request events.</p>
+        <p><strong>Codex</strong> Each contributor connects their own profile.</p>
+        <p><strong>Dashboard</strong> Attributed usage rolls into the repository ledger.</p>
       </div>
     </section>
   </>;

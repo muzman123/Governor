@@ -19,7 +19,7 @@ export function PortfolioDashboard({ items }: { items: RepositoryOverview[] }) {
   }
 
   return <>
-    <PageHeader eyebrow="Overview" title="Overview" action={<div className="header-actions"><AutoRefresh/><Link className="button button-primary" href="/app/setup">Connect repository</Link></div>} />
+    <PageHeader eyebrow="Workspace" title="Overview" description="Shared spend and receipts across connected repositories." action={<div className="header-actions"><AutoRefresh/><Link className="button button-primary" href="/app/setup">Connect repository</Link></div>} />
 
     <section className="metrics-grid portfolio-metrics">
       <MetricCard label="7-day estimate" value={money(spend7)} />

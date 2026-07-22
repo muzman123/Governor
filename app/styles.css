@@ -157,6 +157,7 @@ small { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; 
 .model-row:nth-child(3) .model-meter i { background: var(--olive); }
 
 .portfolio-receipts { margin-bottom: 16px; }
+.source-panel { margin-bottom: 16px; }
 .portfolio-receipts .panel-heading { margin-bottom: 15px; }
 .portfolio-receipts .panel-heading .quiet-link { padding-top: 5px; font-size: 12px; }
 .portfolio-row, .receipt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 20px; align-items: center; gap: 18px; min-width: 0; border-top: 1px solid var(--rule-soft); padding: 14px 0; }

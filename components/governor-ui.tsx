@@ -26,7 +26,7 @@ export function MetricCard({label,value,detail,tone}:{label:string;value:string;
 
 export function RepositoryDashboard({overview,canManageBudget}:{overview:RepositoryOverview;canManageBudget:boolean}) {
   return <>
-    <PageHeader eyebrow="Repository overview" title={overview.repo.slug} description={`Default branch: ${overview.repo.defaultBranch} | Last activity: ${date(overview.lastActivityAt)}`} action={<AutoRefresh/>}/>
+    <PageHeader eyebrow="Repository spend" title={overview.repo.slug} description={`Shared ledger | Default branch: ${overview.repo.defaultBranch} | Last activity: ${date(overview.lastActivityAt)}`} action={<AutoRefresh/>}/>
     <section className="metrics-grid">
       <MetricCard label="7-day estimate" value={money(overview.metrics.spend7d)}/>
       <MetricCard label="30-day estimate" value={money(overview.metrics.spend30d)}/>
@@ -35,6 +35,7 @@ export function RepositoryDashboard({overview,canManageBudget}:{overview:Reposit
     </section>
     <section className="two-column dashboard-top"><BudgetForecastCard overview={overview} canManageBudget={canManageBudget}/><SpendTrend points={overview.spendTrend}/></section>
     <section className="two-column"><ModelMix models={overview.modelSpend}/><WorkTypeSpendCard rows={overview.workTypeSpend}/></section>
+    <SourceBreakdown actors={overview.actorSpend}/>
     <OutcomeSummary outcomes={overview.metrics.outcomes}/>
     <section className="two-column"><ReceiptTable receipts={overview.receipts} repository={overview.repo}/><div className="dashboard-side-stack"><RecentObservations receipts={overview.receipts} repository={overview.repo}/><ActivityFeed events={overview.recentEvents}/></div></section>
   </>;
@@ -58,6 +59,10 @@ function ModelMix({models}:{models:RepositoryOverview["modelSpend"]}) {
 function WorkTypeSpendCard({rows}:{rows:RepositoryOverview["workTypeSpend"]}) {
   const total=rows.reduce((sum,row)=>sum+row.totalCost,0);
   return <section className="panel work-type-panel"><div className="panel-heading"><div><div className="eyebrow">Spend by work type</div><h2>Cost by PR label</h2></div></div>{rows.length?<div className="work-type-list">{rows.map((row)=><div key={row.workType} className="work-type-row"><div><strong>{workTypeLabel(row.workType)}</strong><small>{row.prCount} PR{row.prCount===1?"":"s"} · {money(row.avgCostPerPr)} avg.</small></div><div><strong>{money(row.totalCost)}</strong><span className="model-track"><i style={{width:`${total?row.totalCost/total*100:0}%`}}/></span></div></div>)}</div>:<ChartEmpty label="Work-type spend appears after the first PR receipt."/>}<small className="panel-note">Derived from recognized GitHub PR labels. Unrecognized labels remain Unclassified.</small></section>;
+}
+
+function SourceBreakdown({actors}:{actors:RepositoryOverview["actorSpend"]}) {
+  return <section className="panel source-panel"><div className="panel-heading"><div><div className="eyebrow">Shared repository ledger</div><h2>Usage sources</h2></div><span className="muted">All attributed work</span></div>{actors.length ? <div className="work-type-list">{actors.map((actor)=><div className="work-type-row" key={actor.actorType}><div><strong>{actor.label}</strong><small>{actor.eventCount} usage {actor.eventCount === 1 ? "event" : "events"}</small></div><div><strong>{money(actor.costUsd)}</strong></div></div>)}</div> : <ChartEmpty label="Usage sources appear after the first attributed event."/>}</section>;
 }
 
 function OutcomeSummary({outcomes}:{outcomes:OutcomeMetrics}) {

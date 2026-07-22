@@ -38,9 +38,9 @@ export default function Home() {
     </nav>
 
     <section className="hero">
-      <div className="eyebrow">AI engineering spend, in context</div>
+      <div className="eyebrow">Shared repository spend</div>
       <h1>Every Codex dollar,<br/><em>attached to the work</em> it produced.</h1>
-      <p className="hero-copy">Governor puts transparent estimated cost receipts on pull requests and gives engineering teams a calm, auditable view of AI development spend.</p>
+      <p className="hero-copy">One repository ledger for Codex spend, pull request receipts, and monthly budgets across the team.</p>
       <div className="hero-actions">
         <Link className="button" href="/api/auth/github/start">Connect GitHub <span aria-hidden="true">&rarr;</span></Link>
         <a className="text-button" href="#product-preview">See it in context <span aria-hidden="true">&darr;</span></a>
@@ -53,9 +53,9 @@ export default function Home() {
         <div>
           <div className="eyebrow">Portfolio overview</div>
           <h2 id="preview-heading">Spend, receipts, and model mix.</h2>
-          <p>A live view of connected repository work.</p>
+          <p>Shared spend and receipts across connected repositories.</p>
         </div>
-        <span className="preview-label">Dashboard preview</span>
+        <span className="preview-label">Repository overview</span>
       </header>
 
       <div className="landing-preview-frame">
@@ -99,11 +99,11 @@ export default function Home() {
     <section className="landing-grid">
       <article><span>01</span><h2>Observe work</h2><p>Codex sends token metadata while Governor records only repository, branch, commit, and session context.</p></article>
       <article><span>02</span><h2>Calculate clearly</h2><p>Effective-dated token rates make every estimate traceable, not a black box.</p></article>
-      <article><span>03</span><h2>Govern with context</h2><p>Pull requests receive receipts, while the dashboard surfaces patterns worth understanding.</p></article>
+      <article><span>03</span><h2>Share the ledger</h2><p>Every contributor rolls into the same repository receipts, budgets, and spend history.</p></article>
     </section>
 
     <section className="landing-close">
-      <div><div className="eyebrow">Ready for a real receipt?</div><h2>Connect a repository and see the next Codex-assisted pull request in context.</h2></div>
+      <div><div className="eyebrow">Ready for a shared ledger?</div><h2>Connect a repository and give the team one receipt trail for Codex work.</h2></div>
       <Link className="button" href="/api/auth/github/start">Connect GitHub <span aria-hidden="true">&rarr;</span></Link>
     </section>
   </main>;
