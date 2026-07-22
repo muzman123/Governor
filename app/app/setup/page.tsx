@@ -18,7 +18,7 @@ export default async function SetupPage() {
       <SetupPanel url={url} githubAppUrl={appSlug ? `https://github.com/apps/${appSlug}/installations/new` : undefined} />
     </section>
     <section className="panel troubleshooting">
-      <div className="eyebrow">Status</div>
+      <div className="eyebrow"></div>
       <h2>Shared repository setup</h2>
       <div className="troubleshooting-grid">
         <p><strong>GitHub</strong> One installation covers repository and pull request events.</p>
